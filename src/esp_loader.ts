@@ -1652,9 +1652,7 @@ export class ESPLoader extends EventTarget {
     // Check if we should reconnect BEFORE starting the read
     // Reconnect if total bytes read >= 4MB to ensure clean state
     if (this._totalBytesRead >= 4 * 1024 * 1024) {
-      this.logger.log(
-        `Reconnecting before new read...`,
-      );
+      this.logger.log(`Reconnecting before new read...`);
 
       try {
         await this.reconnect();
