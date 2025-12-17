@@ -26,8 +26,12 @@ jobs:
       - name: install node v20
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
+      - name: Update npm to latest
+        run: npm install -g npm@latest
+      - name: Check npm version
+        run: npm --version
       - name: Install NPM
         run: npm install
       - name: Compile TypeScript
