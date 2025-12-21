@@ -1229,8 +1229,15 @@ async function detectFilesystemType(offset, size) {
  */
 async function loadLittlefsModule() {
   if (!littlefsModulePromise) {
-    littlefsModulePromise = import('../src/wasm/littlefs/index.js')
+    // Use absolute path from root for better compatibility with GitHub Pages
+    const basePath = window.location.pathname.endsWith('/') 
+      ? window.location.pathname 
+      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const modulePath = `${basePath}src/wasm/littlefs/index.js`;
+    
+    littlefsModulePromise = import(modulePath)
       .catch(error => {
+        console.error('Failed to load LittleFS module from:', modulePath, error);
         littlefsModulePromise = null; // Reset on error so it can be retried
         throw error;
       });
