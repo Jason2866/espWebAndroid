@@ -4,7 +4,68 @@ let currentLittleFS = null;
 let currentLittleFSPartition = null;
 let currentLittleFSPath = '/';
 let currentLittleFSBlockSize = 4096;
+let currentFilesystemType = null; // 'littlefs', 'fatfs', or 'spiffs'
 let littlefsModulePromise = null; // Cache for LittleFS WASM module
+
+/**
+ * Get display name for current filesystem type
+ */
+function getFilesystemDisplayName() {
+  if (!currentFilesystemType) return 'Filesystem';
+  switch (currentFilesystemType) {
+    case 'littlefs': return 'LittleFS';
+    case 'fatfs': return 'FatFS';
+    case 'spiffs': return 'SPIFFS';
+    default: return 'Filesystem';
+  }
+}
+
+/**
+ * Clear all cached data and state on disconnect
+ */
+function clearAllCachedData() {
+  // Close filesystem if open
+  if (currentLittleFS) {
+    try {
+      // Only call destroy if it exists (LittleFS has it, FatFS/SPIFFS don't)
+      if (typeof currentLittleFS.destroy === 'function') {
+        currentLittleFS.destroy();
+      }
+    } catch (e) {
+      console.error('Error destroying filesystem:', e);
+    }
+  }
+  
+  // Reset filesystem state
+  currentLittleFS = null;
+  currentLittleFSPartition = null;
+  currentLittleFSPath = '/';
+  currentLittleFSBlockSize = 4096;
+  currentFilesystemType = null;
+  
+  // Hide filesystem manager
+  littlefsManager.classList.add('hidden');
+  
+  // Clear partition list
+  partitionList.innerHTML = '';
+  partitionList.classList.add('hidden');
+  
+  // Show the Read Partition Table button again
+  butReadPartitions.classList.remove('hidden');
+  
+  // Clear file input
+  if (littlefsFileInput) {
+    littlefsFileInput.value = '';
+  }
+  
+  // Reset buttons
+  butLittlefsUpload.disabled = true;
+  
+  // Clear any cached module promises
+  littlefsModulePromise = null;
+  
+  logMsg('All cached data cleared');
+}
 
 const baudRates = [2000000, 1500000, 921600, 500000, 460800, 230400, 153600, 128000, 115200];
 const bufferSize = 512;
@@ -262,10 +323,19 @@ function formatMacAddr(macAddr) {
  */
 async function clickConnect() {
   if (espStub) {
+    // Remove disconnect event listener to prevent it from firing during manual disconnect
+    if (espStub.handleDisconnect) {
+      espStub.removeEventListener("disconnect", espStub.handleDisconnect);
+    }
+    
     await espStub.disconnect();
     await espStub.port.close();
     toggleUIConnected(false);
     espStub = undefined;
+    
+    // Clear all cached data and state
+    clearAllCachedData();
+    
     return;
   }
 
@@ -430,10 +500,13 @@ async function clickConnect() {
     await espStub.setBaudrate(baud);
   }
   
-  espStub.addEventListener("disconnect", () => {
+  // Store disconnect handler so we can remove it later
+  const handleDisconnect = () => {
     toggleUIConnected(false);
     espStub = false;
-  });
+  };
+  espStub.handleDisconnect = handleDisconnect; // Store reference on espStub
+  espStub.addEventListener("disconnect", handleDisconnect);
 }
 
 /**
@@ -887,8 +960,9 @@ function displayPartitions(partitions) {
     downloadBtn.onclick = () => downloadPartition(partition);
     actionCell.appendChild(downloadBtn);
     
-    // Add "Open FS" button for data partitions (type 0x01, subtype 0x82)
-    if (partition.type === 0x01 && partition.subtype === 0x82) {
+    // Add "Open FS" button for data partitions with filesystem
+    // 0x81 = FAT, 0x82 = SPIFFS (often contains LittleFS)
+    if (partition.type === 0x01 && (partition.subtype === 0x81 || partition.subtype === 0x82)) {
       const fsBtn = document.createElement("button");
       fsBtn.textContent = "Open FS";
       fsBtn.className = "littlefs-fs-button";
@@ -1116,8 +1190,10 @@ async function openFilesystem(partition) {
     
     if (fsType === 'littlefs') {
       await openLittleFS(partition);
+    } else if (fsType === 'fatfs') {
+      await openFatFS(partition);
     } else if (fsType === 'spiffs') {
-      errorMsg('SPIFFS support not yet implemented. Use LittleFS partitions.');
+      await openSPIFFS(partition);
     } else {
       errorMsg('Unknown filesystem type. Cannot open partition.');
     }
@@ -1134,6 +1210,10 @@ async function openFilesystem(partition) {
  * - The superblock contains the string "littlefs" in its metadata
  * - LittleFS uses a specific block structure with magic numbers
  * 
+ * FatFS Detection:
+ * - FAT boot sector signature 0xAA55 at offset 510-511
+ * - FAT signature string at offset 54 (FAT16) or 82 (FAT32)
+ * 
  * SPIFFS Detection:
  * - SPIFFS has a different structure without the "littlefs" string
  * - SPIFFS uses object headers with different magic numbers
@@ -1141,7 +1221,9 @@ async function openFilesystem(partition) {
  * Detection Strategy:
  * 1. Read first 8KB of partition (covers multiple blocks)
  * 2. Search for "littlefs" string in ASCII representation
- * 3. If found -> LittleFS, otherwise -> SPIFFS
+ * 3. Check for FAT boot signature
+ * 4. Check for SPIFFS magic
+ * 5. If found -> corresponding FS, otherwise -> SPIFFS
  */
 async function detectFilesystemType(offset, size) {
   try {
@@ -1154,68 +1236,81 @@ async function detectFilesystemType(offset, size) {
       return 'spiffs';
     }
     
-    // Method 1: Check for "littlefs" string in metadata
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    
+    // Method 1: Check for SPIFFS magic number FIRST (most reliable)
+    // SPIFFS magic: 0x20140529 XORed with page size and optionally (blocksLim - blockIndex)
+    // The magic is stored as objIdLen bytes (typically 2 bytes) in the last lookup page
+    // Pattern: Always ends with 0x05 in the second byte (from 0x0529)
+    
+    // Check at block boundaries (every 4KB) for SPIFFS magic
+    for (let blockOffset = 0; blockOffset < Math.min(8192, data.length); blockOffset += 4096) {
+      // SPIFFS stores magic near the end of the last lookup page
+      // For 4KB blocks, check around offset 0xF0-0xFF
+      for (let pageOffset = 0xE0; pageOffset < Math.min(0x100, data.length - blockOffset - 2); pageOffset += 2) {
+        const offset = blockOffset + pageOffset;
+        if (offset + 2 > data.length) break;
+        
+        // Read as 16-bit (objIdLen=2, most common)
+        const magic16 = view.getUint16(offset, true);
+        
+        // SPIFFS magic pattern: second byte is always 0x05 (from base 0x0529)
+        // First byte varies based on XOR with pageSize and block index
+        if ((magic16 & 0xFF00) === 0x0500) {
+          logMsg(`SPIFFS detected: Found SPIFFS magic pattern 0x${magic16.toString(16)} at offset 0x${offset.toString(16)}`);
+          return 'spiffs';
+        }
+      }
+    }
+    
+    // Method 2: Check for "littlefs" string in metadata (very reliable)
     // LittleFS stores this in the superblock metadata
     const decoder = new TextDecoder('ascii', { fatal: false });
     const dataStr = decoder.decode(data);
     
     if (dataStr.includes('littlefs')) {
-      logMsg('✓ LittleFS detected: Found "littlefs" signature in partition data');
+      logMsg('LittleFS detected: Found "littlefs" signature in partition data');
       return 'littlefs';
     }
     
-    // Method 2: Check for LittleFS block structure
-    // LittleFS blocks start with a CRC and metadata
-    // Look for patterns that indicate LittleFS structure
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    
-    // Check multiple potential block starts (common block sizes: 512, 1024, 2048, 4096)
-    const blockSizes = [4096, 2048, 1024, 512];
-    for (const blockSize of blockSizes) {
-      if (data.length >= blockSize * 2) {
-        // LittleFS superblock is typically in first two blocks
-        // Check for consistent block structure patterns
-        try {
-          // Look for metadata tags (LittleFS uses specific tag patterns)
-          // Tag format: type (12 bits) | id (10 bits) | length (10 bits)
-          for (let i = 0; i < Math.min(blockSize, data.length - 4); i += 4) {
-            const tag = view.getUint32(i, true);
-            // Check if this looks like a LittleFS metadata tag
-            const type = (tag >> 20) & 0xFFF;
-            const length = tag & 0x3FF;
-            
-            // LittleFS metadata types are in specific ranges
-            // Type 0x000-0x7FF are valid metadata types
-            if (type <= 0x7FF && length > 0 && length <= 1022) {
-              // Found potential LittleFS structure
-              // Additional validation: check if data follows expected pattern
-              if (i + length + 4 <= data.length) {
-                logMsg('✓ LittleFS detected: Found valid metadata structure');
-                return 'littlefs';
-              }
-            }
-          }
-        } catch (e) {
-          // Continue checking other methods
+    // Method 3: Check for FAT filesystem signatures
+    if (data.length >= 512) {
+      const bootSig = view.getUint16(510, true);
+      
+      if (bootSig === 0xAA55) {
+        // Check for FAT signature strings
+        let fat16Sig = '';
+        let fat32Sig = '';
+        
+        if (data.length >= 62) {
+          fat16Sig = String.fromCharCode(data[54], data[55], data[56], data[57], data[58]);
+        }
+        if (data.length >= 90) {
+          fat32Sig = String.fromCharCode(data[82], data[83], data[84], data[85], data[86]);
+        }
+        
+        if (fat16Sig.startsWith('FAT') || fat32Sig.startsWith('FAT')) {
+          logMsg('FatFS detected: Found FAT boot signature and FAT string');
+          return 'fatfs';
+        } else {
+          logMsg('Boot signature found but no FAT string - might be empty/unformatted FAT partition');
         }
       }
     }
     
-    // Method 3: Check for SPIFFS signatures
-    // SPIFFS object headers have specific magic numbers
-    // SPIFFS magic: 0x20140529 (in some implementations)
-    for (let i = 0; i < Math.min(4096, data.length - 4); i += 4) {
-      const magic = view.getUint32(i, true);
-      // Common SPIFFS magic numbers
-      if (magic === 0x20140529 || magic === 0x20160529) {
-        logMsg('✓ SPIFFS detected: Found SPIFFS magic number');
-        return 'spiffs';
+    // Method 4: Check for LittleFS magic numbers (more specific than structure check)
+    // LittleFS v2.x magic: 0x32736c66 ("lfs2" in little-endian)
+    // LittleFS v1.x magic: 0x31736c66 ("lfs1" in little-endian)
+    for (let i = 0; i < Math.min(8192, data.length - 4); i++) {
+      const magic32 = view.getUint32(i, true);
+      if (magic32 === 0x32736c66 || magic32 === 0x31736c66) {
+        logMsg('LittleFS detected: Found LittleFS magic number 0x' + magic32.toString(16) + ' at offset ' + i);
+        return 'littlefs';
       }
     }
     
     // Default: If no clear signature found, assume SPIFFS
-    // (SPIFFS is more common and older, so it's a safer default)
-    logMsg('⚠ No clear filesystem signature found, assuming SPIFFS');
+    logMsg('No clear filesystem signature found, assuming SPIFFS');
     return 'spiffs';
     
   } catch (err) {
@@ -1343,6 +1438,7 @@ async function openLittleFS(partition) {
     currentLittleFSPartition = partition;
     currentLittleFSPath = '/';
     currentLittleFSBlockSize = blockSize;
+    currentFilesystemType = 'littlefs';
     
     // Update UI
     littlefsPartitionName.textContent = partition.name;
@@ -1361,6 +1457,11 @@ async function openLittleFS(partition) {
     // Show manager
     littlefsManager.classList.remove('hidden');
     
+    // Enable all operations for LittleFS (including directories)
+    butLittlefsUpload.disabled = false;
+    butLittlefsMkdir.disabled = false;
+    butLittlefsWrite.disabled = false;
+    
     // Load files
     refreshLittleFS();
     
@@ -1368,6 +1469,358 @@ async function openLittleFS(partition) {
   } catch (e) {
     errorMsg(`Failed to open LittleFS: ${e.message || e}`);
     // Don't call destroy() - just reset state
+    resetLittleFSState();
+  }
+}
+
+/**
+ * Open FatFS partition
+ */
+async function openFatFS(partition) {
+  try {
+    logMsg(`Reading FatFS partition "${partition.name}" (${formatSize(partition.size)})...`);
+    
+    // Read entire partition
+    const partitionProgress = document.getElementById("partitionProgress");
+    const progressBar = partitionProgress.querySelector("div");
+    partitionProgress.classList.remove("hidden");
+    
+    const data = await espStub.readFlash(
+      partition.offset,
+      partition.size,
+      (packet, progress, totalSize) => {
+        const percent = Math.floor((progress / totalSize) * 100);
+        progressBar.style.width = percent + "%";
+      }
+    );
+    
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
+    
+    logMsg('Mounting FatFS filesystem...');
+    logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
+    
+    // Load FatFS module
+    const basePath = window.location.pathname.endsWith('/') 
+      ? window.location.pathname 
+      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const modulePath = `${basePath}src/wasm/fatfs/index.js`;
+    const module = await import(modulePath);
+    const { createFatFSFromImage, createFatFS } = module;
+    
+    // Use 4096 block size (ESP32 standard)
+    let blockSize = 4096;
+    let blockCount = Math.max(1, Math.floor(partition.size / blockSize));
+    if (blockCount <= 0) {
+      blockCount = 1;
+    }
+    
+    let fs = null;
+    
+    // First try to mount existing FatFS from image
+    try {
+      logMsg(`Trying to mount FatFS with block size ${blockSize} (${blockCount} blocks)...`);
+      
+      fs = await createFatFSFromImage(data, {
+        blockSize: blockSize,
+        blockCount: blockCount,
+      });
+      
+      logMsg(`FatFS instance created, attempting to list files...`);
+      const files = fs.list();
+      logMsg(`Successfully listed ${files.length} files/directories`);
+      logMsg(`Successfully mounted FatFS`);
+    } catch (err) {
+      logMsg(`Failed to mount existing FatFS: ${err.message || err}`);
+      
+      // If mounting fails, create a new empty formatted filesystem
+      // Note: This does NOT use the image data - it creates a blank filesystem
+      if (createFatFS) {
+        try {
+          logMsg(`Creating new blank FatFS (not using image data)...`);
+          fs = await createFatFS({
+            blockSize: blockSize,
+            blockCount: blockCount,
+            formatOnInit: true,
+          });
+          logMsg(`Created new formatted FatFS`);
+          logMsg(`Partition appears blank/unformatted. You can format and save to initialize it.`);
+        } catch (createErr) {
+          logMsg(`Failed to create new FatFS: ${createErr.message || createErr}`);
+          throw err; // Throw original error
+        }
+      } else {
+        throw err;
+      }
+    }
+    
+    if (!fs) {
+      throw new Error('Failed to mount FatFS with any block size. The partition may not contain a valid FAT filesystem or may be corrupted.');
+    }
+    
+    // Store filesystem instance and block size
+    currentLittleFS = fs;
+    currentLittleFSPartition = partition;
+    currentLittleFSPath = '/';
+    currentLittleFSBlockSize = blockSize;
+    currentFilesystemType = 'fatfs';
+    
+    // Update UI
+    littlefsPartitionName.textContent = partition.name;
+    littlefsPartitionSize.textContent = formatSize(partition.size);
+    littlefsDiskVersion.textContent = 'FAT';
+    
+    // Show manager
+    littlefsManager.classList.remove('hidden');
+    
+    // Enable all operations for FatFS (including directories)
+    butLittlefsUpload.disabled = false;
+    butLittlefsMkdir.disabled = false;
+    butLittlefsWrite.disabled = false;
+    
+    // Load files
+    refreshLittleFS();
+    
+    logMsg('FatFS filesystem opened successfully');
+  } catch (e) {
+    errorMsg(`Failed to open FatFS: ${e.message || e}`);
+    console.error('FatFS open error:', e);
+    resetLittleFSState();
+  }
+}
+
+/**
+ * Open SPIFFS partition
+ */
+async function openSPIFFS(partition) {
+  try {
+    logMsg(`Reading SPIFFS partition "${partition.name}" (${formatSize(partition.size)})...`);
+    
+    // Read entire partition
+    const partitionProgress = document.getElementById("partitionProgress");
+    const progressBar = partitionProgress.querySelector("div");
+    partitionProgress.classList.remove("hidden");
+    
+    const data = await espStub.readFlash(
+      partition.offset,
+      partition.size,
+      (packet, progress, totalSize) => {
+        const percent = Math.floor((progress / totalSize) * 100);
+        progressBar.style.width = percent + "%";
+      }
+    );
+    
+    partitionProgress.classList.add("hidden");
+    progressBar.style.width = "0%";
+    
+    logMsg('Parsing SPIFFS filesystem...');
+    logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
+    
+    // Import SPIFFS module
+    const basePath = window.location.pathname.endsWith('/') 
+      ? window.location.pathname 
+      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const modulePath = `${basePath}js/modules/esptool.js`;
+
+    const { SpiffsFS, SpiffsReader, SpiffsBuildConfig, DEFAULT_SPIFFS_CONFIG } = await import(modulePath);
+    
+    // Create build config with partition size
+    const config = new SpiffsBuildConfig({
+      ...DEFAULT_SPIFFS_CONFIG,
+      imgSize: partition.size,
+    });
+    
+    // Create reader and parse existing files
+    const reader = new SpiffsReader(data, config);
+    reader.parse();
+    
+    // Get file list
+    const files = reader.listFiles();
+    logMsg(`Found ${files.length} files in SPIFFS`);
+    
+    // Create a wrapper object that mimics LittleFS interface with full read/write support
+    const spiffsWrapper = {
+      _reader: reader,
+      _files: files,
+      _partition: partition,
+      _config: config,
+      _originalData: data, // Store original image data
+      _modified: false,
+      
+      list: function(path = '/') {
+        // Normalize path
+        const normalizedPath = path === '/' ? '' : path.replace(/^\//, '').replace(/\/$/, '');
+        
+        // Get all files with proper path property for UI compatibility
+        const allFiles = this._files.map(f => {
+          const fileName = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+          return {
+            name: fileName,
+            path: '/' + fileName, // Add path property for UI
+            type: 'file',
+            size: f.size,
+            _data: f.data
+          };
+        });
+        
+        // If root, return all files
+        if (!normalizedPath) {
+          return allFiles;
+        }
+        
+        // Filter by path prefix
+        const prefix = normalizedPath + '/';
+        return allFiles.filter(f => f.name.startsWith(prefix));
+      },
+      
+      read: function(path) {
+        const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        const file = this._files.find(f => {
+          const fname = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+          return fname === normalizedPath;
+        });
+        return file ? file.data : null;
+      },
+      
+      readFile: function(path) {
+        // Alias for read() to match LittleFS interface
+        return this.read(path);
+      },
+      
+      write: function(path, data) {
+        // Determine the filename format used in original files
+        // Check if original files have leading slash
+        const hasLeadingSlash = this._files.length > 0 && this._files[0].name.startsWith('/');
+        
+        // Normalize path for comparison
+        const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        
+        // Store filename in the same format as original files
+        const storedName = hasLeadingSlash ? '/' + normalizedPath : normalizedPath;
+        
+        // Check if file already exists
+        const existingIndex = this._files.findIndex(f => {
+          const fname = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+          return fname === normalizedPath;
+        });
+        
+        // Update or add file
+        if (existingIndex >= 0) {
+          this._files[existingIndex] = {
+            name: storedName,
+            size: data.length,
+            data: data
+          };
+        } else {
+          this._files.push({
+            name: storedName,
+            size: data.length,
+            data: data
+          });
+        }
+        
+        this._modified = true;
+      },
+      
+      writeFile: function(path, data) {
+        // Alias for write() to match LittleFS interface
+        return this.write(path, data);
+      },
+      
+      addFile: function(path, data) {
+        // Alias for write() to match alternative interface
+        return this.write(path, data);
+      },
+      
+      remove: function(path) {
+        // Normalize path
+        const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        
+        // Find and remove file
+        const index = this._files.findIndex(f => {
+          const fname = f.name.startsWith('/') ? f.name.substring(1) : f.name;
+          return fname === normalizedPath;
+        });
+        
+        if (index >= 0) {
+          this._files.splice(index, 1);
+          this._modified = true;
+        } else {
+          throw new Error(`File not found: ${path}`);
+        }
+      },
+      
+      deleteFile: function(path) {
+        // Alias for remove() to match LittleFS interface
+        return this.remove(path);
+      },
+      
+      delete: function(path, options) {
+        // For compatibility with LittleFS delete method
+        // SPIFFS doesn't have directories, so just delete the file
+        return this.remove(path);
+      },
+      
+      mkdir: function() {
+        throw new Error('SPIFFS does not support directories. Files are stored in a flat structure.');
+      },
+      
+      toImage: function() {
+        // If not modified, return original data
+        if (!this._modified) {
+          return this._originalData || new Uint8Array(this._partition.size);
+        }
+        
+        // Create new SPIFFS filesystem with all files
+        const fs = new SpiffsFS(this._partition.size, this._config);
+        
+        // Add all files - preserve original filename format
+        for (const file of this._files) {
+          // Use the filename exactly as stored in _files
+          // This preserves whether it has a leading slash or not
+          const fileName = file.name;
+          
+          // Log for debugging
+          console.log(`Adding file to SPIFFS: "${fileName}" (${file.data.length} bytes)`);
+          
+          fs.createFile(fileName, file.data);
+        }
+        
+        // Generate binary image
+        const image = fs.toBinary();
+        console.log(`Generated SPIFFS image: ${image.length} bytes`);
+        return image;
+      }
+    };
+    
+    // Store filesystem instance
+    currentLittleFS = spiffsWrapper;
+    currentLittleFSPartition = partition;
+    currentLittleFSPath = '/';
+    currentLittleFSBlockSize = config.blockSize;
+    currentFilesystemType = 'spiffs';
+    
+    // Update UI
+    littlefsPartitionName.textContent = partition.name;
+    littlefsPartitionSize.textContent = formatSize(partition.size);
+    littlefsDiskVersion.textContent = 'SPIFFS';
+    
+    // Show manager
+    littlefsManager.classList.remove('hidden');
+    
+    // Enable write operations for SPIFFS (but not mkdir since SPIFFS is flat)
+    butLittlefsUpload.disabled = false;
+    butLittlefsMkdir.disabled = true; // SPIFFS doesn't support directories
+    butLittlefsWrite.disabled = false;
+    
+    // Load files
+    refreshLittleFS();
+    
+    logMsg('SPIFFS filesystem opened successfully');
+    logMsg('Note: SPIFFS is a flat filesystem - directories are not supported.');
+  } catch (e) {
+    errorMsg(`Failed to open SPIFFS: ${e.message || e}`);
+    console.error('SPIFFS open error:', e);
     resetLittleFSState();
   }
 }
@@ -1533,7 +1986,7 @@ function clickLittlefsUp() {
  */
 function clickLittlefsRefresh() {
   refreshLittleFS();
-  logMsg('LittleFS file list refreshed');
+  logMsg(`${getFilesystemDisplayName()} file list refreshed`);
 }
 
 /**
@@ -1543,15 +1996,16 @@ async function clickLittlefsBackup() {
   if (!currentLittleFS || !currentLittleFSPartition) return;
   
   try {
-    logMsg('Creating LittleFS backup image...');
+    logMsg(`Creating ${getFilesystemDisplayName()} backup image...`);
     const image = currentLittleFS.toImage();
     
-    const filename = `${currentLittleFSPartition.name}_littlefs_backup.bin`;
+    const fsType = currentFilesystemType || 'filesystem';
+    const filename = `${currentLittleFSPartition.name}_${fsType}_backup.bin`;
     await saveDataToFile(image, filename);
     
-    logMsg(`LittleFS backup saved as "${filename}"`);
+    logMsg(`${getFilesystemDisplayName()} backup saved as "${filename}"`);
   } catch (e) {
-    errorMsg(`Failed to backup LittleFS: ${e.message || e}`);
+    errorMsg(`Failed to backup ${getFilesystemDisplayName()}: ${e.message || e}`);
   }
 }
 
@@ -1562,7 +2016,7 @@ async function clickLittlefsWrite() {
   if (!currentLittleFS || !currentLittleFSPartition) return;
   
   const confirmed = confirm(
-    `Write modified LittleFS to flash?\n\n` +
+    `Write modified filesystem to flash?\n\n` +
     `Partition: ${currentLittleFSPartition.name}\n` +
     `Offset: 0x${currentLittleFSPartition.offset.toString(16)}\n` +
     `Size: ${formatSize(currentLittleFSPartition.size)}\n\n` +
@@ -1572,7 +2026,7 @@ async function clickLittlefsWrite() {
   if (!confirmed) return;
   
   try {
-    logMsg('Creating LittleFS image...');
+    logMsg(`Creating ${getFilesystemDisplayName()} image...`);
     const image = currentLittleFS.toImage();
     logMsg(`Image created: ${formatSize(image.length)}`);
     
@@ -1616,11 +2070,11 @@ async function clickLittlefsWrite() {
     usageBar.style.width = originalUsageBarWidth;
     usageText.textContent = originalUsageText;
     
-    logMsg(`✓ LittleFS successfully written to flash!`);
+    logMsg(`${getFilesystemDisplayName()} successfully written to flash!`);
     logMsg(`To use the new filesystem, reset your device.`);
     
   } catch (e) {
-    errorMsg(`Failed to write LittleFS to flash: ${e.message || e}`);
+    errorMsg(`Failed to write ${getFilesystemDisplayName()} to flash: ${e.message || e}`);
   } finally {
     // Re-enable buttons
     butLittlefsRefresh.disabled = false;
@@ -1636,19 +2090,25 @@ async function clickLittlefsWrite() {
  * Close LittleFS manager
  */
 function clickLittlefsClose() {
+  const fsName = getFilesystemDisplayName() || 'Filesystem';
+  
   if (currentLittleFS) {
     try {
-      currentLittleFS.destroy();
+      // Only call destroy if it exists (LittleFS has it, FatFS/SPIFFS don't)
+      if (typeof currentLittleFS.destroy === 'function') {
+        currentLittleFS.destroy();
+      }
     } catch (e) {
-      console.error('Error destroying LittleFS:', e);
+      console.error(`Error destroying ${fsName}:`, e);
     }
     currentLittleFS = null;
   }
   
   currentLittleFSPartition = null;
   currentLittleFSPath = '/';
+  currentFilesystemType = null;
   littlefsManager.classList.add('hidden');
-  logMsg('LittleFS manager closed');
+  logMsg(`${fsName} manager closed`);
 }
 
 /**
@@ -1693,7 +2153,7 @@ async function clickLittlefsUpload() {
     
     // Verify by reading back
     const readBack = currentLittleFS.readFile(targetPath);
-    logMsg(`✓ File written: ${readBack.length} bytes at ${targetPath}`);
+    logMsg(`File written: ${readBack.length} bytes at ${targetPath}`);
     
     // Clear input
     littlefsFileInput.value = '';
