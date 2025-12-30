@@ -3,7 +3,7 @@ name: Build and upload
 on:
   push:
     branches:
-      - development
+      - main
   workflow_dispatch:
 
 # Allow one concurrent deployment
