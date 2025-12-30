@@ -1465,7 +1465,7 @@ async function openLittleFS(partition) {
       const diskVer = fs.getDiskVersion();
       const major = (diskVer >> 16) & 0xFFFF;
       const minor = diskVer & 0xFFFF;
-      littlefsDiskVersion.textContent = `v${major}.${minor}`;
+      littlefsDiskVersion.textContent = `LittleFS v${major}.${minor}`;
     } catch (e) {
       littlefsDiskVersion.textContent = '';
     }
