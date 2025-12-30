@@ -198,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initBaudRate();
   loadAllSettings();
   updateTheme();
-  logMsg("WebSerial ESPTool loaded.");
+  logMsg("ESP32Tool loaded.");
 });
 
 function initBaudRate() {

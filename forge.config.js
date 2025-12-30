@@ -3,15 +3,15 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
-    name: 'WebSerial ESPTool',
-    executableName: 'webserial-esptool',
+    name: 'ESP32Tool',
+    executableName: 'esp32tool',
     asar: true,
     // Ensure consistent executable name across platforms
     win32metadata: {
-      FileDescription: 'WebSerial ESPTool',
-      ProductName: 'WebSerial ESPTool',
+      FileDescription: 'ESP32Tool',
+      ProductName: 'ESP32Tool',
     },
-    appBundleId: 'com.tasmota.webserial-esptool',
+    appBundleId: 'com.esp32tool',
     appCategoryType: 'public.app-category.developer-tools',
     // Files to exclude from the app
     ignore: [
@@ -32,9 +32,9 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        name: 'WebSerialESPTool',
+        name: 'ESP32Tool',
         authors: 'Johann Obermeier',
-        description: 'Flash & Read ESP devices using WebSerial',
+        description: 'Flash & Read ESP32 devices using WebSerial',
       },
     },
     {
@@ -45,10 +45,10 @@ module.exports = {
       name: '@electron-forge/maker-deb',
       config: {
         options: {
-          name: 'webserial-esptool',
-          bin: 'webserial-esptool',
+          name: 'esp32tool',
+          bin: 'esp32tool',
           maintainer: 'Johann Obermeier',
-          homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
+          homepage: 'https://github.com/Jason2866/esp32tool',
           categories: ['Development', 'Utility'],
         },
       },
@@ -57,9 +57,9 @@ module.exports = {
       name: '@electron-forge/maker-rpm',
       config: {
         options: {
-          name: 'webserial-esptool',
-          bin: 'webserial-esptool',
-          homepage: 'https://github.com/Jason2866/WebSerial_ESPTool',
+          name: 'esp32tool',
+          bin: 'esp32tool',
+          homepage: 'https://github.com/Jason2866/esp32tool',
           categories: ['Development', 'Utility'],
         },
       },

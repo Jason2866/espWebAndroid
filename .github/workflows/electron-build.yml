@@ -116,9 +116,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: WebSerial ESPTool ${{ github.ref_name }}
+          name: ESP32Tool ${{ github.ref_name }}
           body: |
-            ## WebSerial ESPTool ${{ github.ref_name }}
+            ## ESP32Tool ${{ github.ref_name }}
             
             ### Downloads
             
@@ -131,9 +131,9 @@ jobs:
             
             ### Installation
             
-            **macOS Apple Silicon:** Download with `curl -L -O "https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ steps.version.outputs.VERSION }}-arm64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            **macOS Apple Silicon:** Download with `curl -L -O "https://github.com/Jason2866/esp32tool/releases/download/${{ github.ref_name }}/ESP32Tool-${{ steps.version.outputs.VERSION }}-arm64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
             
-            **macOS Intel:** Download with `curl -L -O "https://github.com/Jason2866/WebSerial_ESPTool/releases/download/${{ github.ref_name }}/WebSerial.ESPTool-${{ steps.version.outputs.VERSION }}-x64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
+            **macOS Intel:** Download with `curl -L -O "https://github.com/Jason2866/esp32tool/releases/download/${{ github.ref_name }}/ESP32Tool-${{ steps.version.outputs.VERSION }}-x64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
             
             **Windows:** Run the `.exe` installer or extract the `.zip` archive.
             

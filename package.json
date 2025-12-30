@@ -1,11 +1,11 @@
 {
-  "name": "tasmota-webserial-esptool",
-  "version": "7.3.0",
+  "name": "esp32tool",
+  "version": "1.0.0",
   "description": "Flash & Read ESP devices using WebSerial",
   "main": "electron/main.js",
   "repository": {
     "type": "git",
-    "url": "git://github.com/Jason2866/WebSerial_ESPTool.git"
+    "url": "git://github.com/Jason2866/esp32tool.git"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"

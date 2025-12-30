@@ -59,7 +59,7 @@ export class SpiffsFS {
     try {
       const block = this.blocks[this.blocks.length - 1];
       block.beginObj(this.curObjId, contents.length, name);
-    } catch (e) {
+    } catch {
       const block = this.createBlock();
       block.beginObj(this.curObjId, contents.length, name);
     }
@@ -160,12 +160,12 @@ export class SpiffsFS {
     throw new Error("listFiles requires fromBinary to be called first");
   }
 
-  readFile(path: string): Uint8Array {
+  readFile(): Uint8Array {
     // This would require parsing the blocks - implement in fromBinary
     throw new Error("readFile requires fromBinary to be called first");
   }
 
-  deleteFile(path: string): void {
+  deleteFile(): void {
     // SPIFFS doesn't support in-place deletion
     // Need to recreate filesystem without the file
     throw new Error(

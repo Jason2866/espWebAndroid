@@ -31,7 +31,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, 'icons', 'icon.png'),
-    title: 'WebSerial ESPTool',
+    title: 'ESP32Tool',
     autoHideMenuBar: false,
   });
 
@@ -187,10 +187,10 @@ function createMenu() {
       label: 'Help',
       submenu: [
         {
-          label: 'About WebSerial ESPTool',
+          label: 'About ESP32Tool',
           click: async () => {
             const { shell } = require('electron');
-            await shell.openExternal('https://github.com/Jason2866/WebSerial_ESPTool');
+            await shell.openExternal('https://github.com/Jason2866/esp32tool');
           }
         },
         {
@@ -314,7 +314,7 @@ ipcMain.handle('show-prompt', async (event, { message, defaultValue }) => {
 ipcMain.handle('show-message', async (event, { type, title, message, buttons }) => {
   const result = await dialog.showMessageBox(mainWindow, {
     type: type || 'info',
-    title: title || 'WebSerial ESPTool',
+    title: title || 'ESP32Tool',
     message: message,
     buttons: buttons || ['OK']
   });
