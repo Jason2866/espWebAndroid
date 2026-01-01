@@ -6,6 +6,8 @@ let currentLittleFSPath = '/';
 let currentLittleFSBlockSize = 4096;
 let currentFilesystemType = null; // 'littlefs', 'fatfs', or 'spiffs'
 let littlefsModulePromise = null; // Cache for LittleFS WASM module
+let lastReadFlashData = null; // Store last read flash data for ESP8266
+let currentChipName = null; // Store chip name globally
 
 /**
  * Get display name for current filesystem type
@@ -42,6 +44,8 @@ function clearAllCachedData() {
   currentLittleFSPath = '/';
   currentLittleFSBlockSize = 4096;
   currentFilesystemType = null;
+  lastReadFlashData = null;
+  currentChipName = null;
   
   // Hide filesystem manager
   littlefsManager.classList.add('hidden');
@@ -52,6 +56,20 @@ function clearAllCachedData() {
   
   // Show the Read Partition Table button again
   butReadPartitions.classList.remove('hidden');
+  
+  // Hide Detect FS button
+  butDetectFS.classList.add('hidden');
+  
+  // Hide Open FS Manager button (if it exists)
+  if (butOpenFSManager) {
+    butOpenFSManager.classList.add('hidden');
+  }
+  
+  // Hide ESP8266 info (if it exists)
+  const esp8266Info = document.getElementById('esp8266Info');
+  if (esp8266Info) {
+    esp8266Info.classList.add('hidden');
+  }
   
   // Clear file input
   if (littlefsFileInput) {
@@ -87,6 +105,8 @@ const readOffset = document.getElementById("readOffset");
 const readSize = document.getElementById("readSize");
 const readProgress = document.getElementById("readProgress");
 const butReadPartitions = document.getElementById("butReadPartitions");
+const butDetectFS = document.getElementById("butDetectFS");
+const butOpenFSManager = document.getElementById("butOpenFSManager");
 const partitionList = document.getElementById("partitionList");
 const littlefsManager = document.getElementById("littlefsManager");
 const littlefsPartitionName = document.getElementById("littlefsPartitionName");
@@ -143,6 +163,8 @@ document.addEventListener("DOMContentLoaded", () => {
   butProgram.addEventListener("click", clickProgram);
   butReadFlash.addEventListener("click", clickReadFlash);
   butReadPartitions.addEventListener("click", clickReadPartitions);
+  butDetectFS.addEventListener("click", clickDetectFS);
+  butOpenFSManager.addEventListener("click", clickOpenFSManager);
   butLittlefsRefresh.addEventListener("click", clickLittlefsRefresh);
   butLittlefsBackup.addEventListener("click", clickLittlefsBackup);
   butLittlefsWrite.addEventListener("click", clickLittlefsWrite);
@@ -500,9 +522,30 @@ async function clickConnect() {
   logMsg("Connected to " + esploader.chipName);
   logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
 
+  // Store chip info globally
+  currentChipName = esploader.chipName;
+
   espStub = await esploader.runStub();
   toggleUIConnected(true);
   toggleUIToolbar(true);
+  
+  // Check if ESP8266 and show filesystem button
+  const isESP8266 = currentChipName && currentChipName.toUpperCase().includes("ESP8266");
+  if (isESP8266) {
+    // Hide partition table button for ESP8266
+    butReadPartitions.classList.add('hidden');
+    
+    // Show ESP8266 filesystem detection button
+    butDetectFS.classList.remove('hidden');
+  } else {
+    // Show partition table button for ESP32
+    butReadPartitions.classList.remove('hidden');
+    
+    // Hide ESP8266 filesystem detection button
+    if (butDetectFS) {
+      butDetectFS.classList.add('hidden');
+    }
+  }
   
   // Set detected flash size in the read size field
   if (espStub.flashSize) {
@@ -591,6 +634,225 @@ function updateLogVisibility() {
     if (logControls) {
       logControls.classList.add("hidden");
     }
+  }
+}
+
+/**
+ * @name clickDetectFS
+ * Detect ESP8266 filesystem and open manager directly
+ */
+async function clickDetectFS() {
+  if (!espStub || !espStub.flashSize) {
+    errorMsg('Not connected or flash size unknown');
+    return;
+  }
+  
+  try {
+    butDetectFS.disabled = true;
+    logMsg('Detecting ESP8266 filesystem...');
+    
+    const flashSizeMB = parseInt(espStub.flashSize);
+    const flashSizeBytes = flashSizeMB * 1024 * 1024;
+    const esptoolMod = await window.esptoolPackage;
+    
+    // Scan flash for filesystem signatures - optimized based on flash size
+    let scanOffsets = [];
+    
+    if (flashSizeMB >= 4) {
+      // 4MB/8MB/16MB Flash
+      scanOffsets = [
+        { offset: 0x200000, size: 0x10000 }, // Most common: 2MB/6MB/14MB FS
+        { offset: 0x100000, size: 0x10000 }, // Alternative: 3MB/7MB/15MB FS
+        { offset: 0x300000, size: 0x10000 }, // 4MB only: 1MB FS
+      ];
+    } else if (flashSizeMB >= 2) {
+      // 2MB Flash
+      scanOffsets = [
+        { offset: 0x100000, size: 0x10000 }, // 1MB FS
+        { offset: 0x180000, size: 0x10000 }, // 512KB FS
+        { offset: 0x1c0000, size: 0x10000 }, // 256KB FS
+        { offset: 0x1e0000, size: 0x1b000 }, // 128KB + 64KB FS (covers 0x1e0000 and 0x1f0000)
+      ];
+    } else if (flashSizeMB >= 1) {
+      // 1MB Flash - one large read covers all 7 possible offsets
+      scanOffsets = [
+        { offset: 0x07b000, size: 0x80000 }, // Covers all: 512KB, 256KB, 192KB, 160KB, 144KB, 128KB, 64KB
+      ];
+    } else if (flashSizeMB >= 0.5) {
+      // 512KB Flash
+      scanOffsets = [
+        { offset: 0x05b000, size: 0x20000 }, // Covers 128KB, 64KB, 32KB (0x05b000, 0x06b000, 0x073000)
+      ];
+    }
+    
+    // Collect all found filesystems
+    const foundFilesystems = [];
+    
+    for (const scan of scanOffsets) {
+      if (scan.offset + scan.size > flashSizeBytes) {
+        continue;
+      }
+      
+      try {
+        logMsg(`Scanning at 0x${scan.offset.toString(16)}...`);
+        const scanData = await espStub.readFlash(scan.offset, scan.size);
+        
+        // Check multiple offsets within the read data
+        const checkOffsets = [];
+        if (scan.size > 0x10000) {
+          // Large read - check multiple positions
+          for (let pos = 0; pos < scan.size; pos += 0x10000) {
+            checkOffsets.push(scan.offset + pos);
+          }
+        } else {
+          // Small read - check only start position
+          checkOffsets.push(scan.offset);
+        }
+        
+        for (const checkOffset of checkOffsets) {
+          const dataOffset = checkOffset - scan.offset;
+          if (dataOffset + 0x10000 > scanData.length) continue;
+          
+          const checkData = scanData.slice(dataOffset, dataOffset + 0x10000);
+          const scannedLayout = esptoolMod.scanESP8266Filesystem(checkData, checkOffset, flashSizeBytes);
+          
+          if (scannedLayout) {
+            const fsType = esptoolMod.detectFilesystemFromImage(checkData, currentChipName);
+            
+            // Validate: Check if it's a real filesystem with valid magic
+            if (fsType !== 'unknown') {
+              foundFilesystems.push({
+                layout: scannedLayout,
+                fsType: fsType,
+                data: checkData
+              });
+              logMsg(`Found ${fsType.toUpperCase()} at 0x${scannedLayout.start.toString(16)} - 0x${scannedLayout.end.toString(16)} (${formatSize(scannedLayout.size)})`);
+            }
+          }
+        }
+        
+      } catch (e) {
+        // Continue scanning
+        logMsg(`Scan at 0x${scan.offset.toString(16)} failed: ${e.message || e}`);
+      }
+    }
+    
+    // Choose the best filesystem from found ones
+    let detectedLayout = null;
+    
+    if (foundFilesystems.length === 0) {
+      // No filesystem found - use fallback
+      logMsg('No filesystem found by scanning, using default layout...');
+      const fsLayouts = esptoolMod.getESP8266FilesystemLayout(flashSizeMB);
+      if (fsLayouts && fsLayouts.length > 0) {
+        detectedLayout = fsLayouts[0];
+        logMsg(`Using default layout for ${flashSizeMB}MB flash: 0x${detectedLayout.start.toString(16)} - 0x${detectedLayout.end.toString(16)} (${formatSize(detectedLayout.size)})`);
+      }
+    } else if (foundFilesystems.length === 1) {
+      // Only one found - use it
+      detectedLayout = foundFilesystems[0].layout;
+      logMsg(`Using detected filesystem at 0x${detectedLayout.start.toString(16)}`);
+    } else {
+      // Multiple found - choose the best one
+      // Prefer filesystems with valid size from block_count over layout-based sizes
+      logMsg(`Found ${foundFilesystems.length} filesystems, selecting best match...`);
+      
+      // Sort by: 1) Has valid block_count (size not from layout), 2) Smallest offset
+      foundFilesystems.sort((a, b) => {
+        // Check if size matches a known layout (indicates fallback was used)
+        const aIsLayout = [0x1fa000, 0x2fa000, 0x0fa000, 0x5fa000, 0x6fa000, 0xdfa000, 0xefa000].includes(a.layout.size);
+        const bIsLayout = [0x1fa000, 0x2fa000, 0x0fa000, 0x5fa000, 0x6fa000, 0xdfa000, 0xefa000].includes(b.layout.size);
+        
+        if (aIsLayout !== bIsLayout) {
+          return aIsLayout ? 1 : -1; // Prefer non-layout (real block_count)
+        }
+        
+        return a.layout.start - b.layout.start; // Then prefer smaller offset
+      });
+      
+      detectedLayout = foundFilesystems[0].layout;
+      logMsg(`Selected filesystem at 0x${detectedLayout.start.toString(16)} (${formatSize(detectedLayout.size)})`);
+    }
+    
+    if (!detectedLayout) {
+      errorMsg('No filesystem layout found for this flash size');
+      butDetectFS.disabled = false;
+      return;
+    }
+    
+    // Show progress bar
+    readProgress.classList.remove('hidden');
+    const progressBar = readProgress.querySelector('div');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+    }
+    
+    // Read the filesystem with real progress tracking
+    logMsg(`Reading ${formatSize(detectedLayout.size)} from 0x${detectedLayout.start.toString(16)}...`);
+    
+    const fsData = await espStub.readFlash(
+      detectedLayout.start, 
+      detectedLayout.size,
+      (packet, progress, totalSize) => {
+        // Update progress bar with real progress
+        if (progressBar) {
+          const percentage = (progress / totalSize) * 100;
+          progressBar.style.width = `${percentage.toFixed(1)}%`;
+        }
+      }
+    );
+    
+    // Keep progress bar at 100% for a moment
+    if (progressBar) {
+      progressBar.style.width = '100%';
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+    readProgress.classList.add('hidden');
+    
+    // Store the data for later use
+    lastReadFlashData = fsData;
+
+    // Hide Open FS Manager since we're opening directly
+    butOpenFSManager.classList.add('hidden');
+
+    // Detect filesystem type
+    const fsType = esptoolMod.detectFilesystemFromImage(fsData, currentChipName);
+    logMsg(`Detected filesystem type: ${fsType.toUpperCase()}`);
+    
+    if (fsType === 'unknown') {
+      errorMsg('Could not detect filesystem type');
+      butDetectFS.disabled = false;
+      return;
+    }
+    
+    // Create a partition object for compatibility
+    const partition = {
+      name: 'filesystem',
+      type: 0x01,
+      subtype: fsType === 'littlefs' ? 0x82 : (fsType === 'fatfs' ? 0x81 : 0x82),
+      offset: detectedLayout.start,
+      size: detectedLayout.size,
+      _readData: fsData,
+      _blockSize: detectedLayout.block,
+      _pageSize: detectedLayout.page
+    };
+    
+    // Open the filesystem directly
+    if (fsType === 'littlefs') {
+      await openLittleFS(partition);
+    } else if (fsType === 'fatfs') {
+      await openFatFS(partition);
+    } else if (fsType === 'spiffs') {
+      await openSPIFFS(partition);
+    }
+    
+  } catch (e) {
+    errorMsg(`Failed to detect/open filesystem: ${e.message || e}`);
+    console.error(e);
+  } finally {
+    // Hide progress bar
+    readProgress.classList.add('hidden');
+    butDetectFS.disabled = false;
   }
 }
 
@@ -794,6 +1056,33 @@ async function clickReadFlash() {
 
     // Save file using Electron API or browser download
     await saveDataToFile(data, defaultFilename);
+    
+    // Check if this looks like a filesystem
+    const chipName = currentChipName || '';
+    const esptoolMod = await window.esptoolPackage;
+    const fsType = esptoolMod.detectFilesystemFromImage(data, chipName);
+    
+    logMsg(`Filesystem detection: ${fsType} (chipName: ${chipName})`);
+    
+    if (fsType !== 'unknown') {
+      logMsg(`Detected ${fsType} filesystem in read data`);
+      
+      // Store the read data and metadata for later use
+      lastReadFlashData = {
+        data: data,
+        offset: offset,
+        size: size,
+        fsType: fsType
+      };
+      
+      // Show "Open FS Manager" button
+      butOpenFSManager.classList.remove('hidden');
+      logMsg('Click "Open FS Manager" to access the filesystem');
+    } else {
+      // Hide button if no filesystem detected
+      butOpenFSManager.classList.add('hidden');
+      lastReadFlashData = null;
+    }
 
   } catch (e) {
     errorMsg("Failed to read flash: " + e);
@@ -806,6 +1095,33 @@ async function clickReadFlash() {
     butReadFlash.disabled = false;
     readOffset.disabled = false;
     readSize.disabled = false;
+  }
+}
+
+/**
+ * @name clickOpenFSManager
+ * Click handler for the Open FS Manager button (ESP8266)
+ */
+async function clickOpenFSManager() {
+  if (!lastReadFlashData) {
+    errorMsg('No filesystem data available. Please read flash first.');
+    return;
+  }
+  
+  try {
+    // Create a pseudo-partition object for the read data
+    const pseudoPartition = {
+      name: `flash_0x${lastReadFlashData.offset.toString(16)}`,
+      offset: lastReadFlashData.offset,
+      size: lastReadFlashData.size,
+      type: 0x01,
+      subtype: lastReadFlashData.fsType === 'fatfs' ? 0x81 : 0x82,
+      _readData: lastReadFlashData.data // Store the already-read data
+    };
+    
+    await openFilesystem(pseudoPartition);
+  } catch (e) {
+    errorMsg(`Failed to open filesystem: ${e.message || e}`);
   }
 }
 
@@ -1240,9 +1556,12 @@ async function detectFilesystemType(offset, size) {
       return 'spiffs';
     }
     
+    // Get chip name for ESP8266-specific detection
+    const chipName = currentChipName || '';
+    
     // Use the detectFilesystemFromImage function from esptool package
     const esptoolMod = await window.esptoolPackage;
-    const fsType = esptoolMod.detectFilesystemFromImage(data);
+    const fsType = esptoolMod.detectFilesystemFromImage(data, chipName);
     
     // Convert FilesystemType enum to lowercase string
     const fsTypeStr = fsType.toLowerCase();
@@ -1324,27 +1643,48 @@ async function openLittleFS(partition) {
   try {
     logMsg(`Reading LittleFS partition "${partition.name}" (${formatSize(partition.size)})...`);
     
-    // Read entire partition
-    const partitionProgress = document.getElementById("partitionProgress");
-    const progressBar = partitionProgress.querySelector("div");
-    partitionProgress.classList.remove("hidden");
+    let data;
     
-    const data = await espStub.readFlash(
-      partition.offset,
-      partition.size,
-      (packet, progress, totalSize) => {
-        const percent = Math.floor((progress / totalSize) * 100);
-        progressBar.style.width = percent + "%";
-      }
-    );
-    
-    partitionProgress.classList.add("hidden");
-    progressBar.style.width = "0%";
+    // Check if data was already read (from Read Flash button)
+    if (partition._readData) {
+      data = partition._readData;
+      logMsg('Using already-read flash data');
+    } else {
+      // Read entire partition
+      const partitionProgress = document.getElementById("partitionProgress");
+      const progressBar = partitionProgress.querySelector("div");
+      partitionProgress.classList.remove("hidden");
+      
+      data = await espStub.readFlash(
+        partition.offset,
+        partition.size,
+        (packet, progress, totalSize) => {
+          const percent = Math.floor((progress / totalSize) * 100);
+          progressBar.style.width = percent + "%";
+        }
+      );
+      
+      partitionProgress.classList.add("hidden");
+      progressBar.style.width = "0%";
+    }
     
     logMsg('Mounting LittleFS filesystem...');
     
-    // Try to mount with different block sizes
-    const blockSizes = [4096, 2048, 1024, 512];
+    // Import constants from esptool module
+    const basePath = window.location.pathname.endsWith('/') 
+      ? window.location.pathname 
+      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const esptoolModulePath = `${basePath}js/modules/esptool.js`;
+    const { 
+      LITTLEFS_BLOCK_SIZE_CANDIDATES,
+      ESP8266_LITTLEFS_BLOCK_SIZE_CANDIDATES 
+    } = await import(esptoolModulePath);
+    
+    // Get chip-specific block sizes using defined constants
+    const chipName = currentChipName || '';
+    const isESP8266 = chipName.toUpperCase().includes("ESP8266");
+    const blockSizes = isESP8266 ? ESP8266_LITTLEFS_BLOCK_SIZE_CANDIDATES : LITTLEFS_BLOCK_SIZE_CANDIDATES;
+    
     let fs = null;
     let blockSize = 0;
     
@@ -1355,15 +1695,28 @@ async function openLittleFS(partition) {
     for (const bs of blockSizes) {
       try {
         const blockCount = Math.floor(partition.size / bs);
-        fs = await createLittleFSFromImage(data, {
+        
+        // ESP8266-specific parameters (from main.py)
+        const mountOptions = isESP8266 ? {
           blockSize: bs,
           blockCount: blockCount,
-        });
+          readSize: 64,
+          progSize: 64,
+          cacheSize: 64,
+          lookaheadSize: 64,
+          nameMax: 32,
+          blockCycles: 16,
+        } : {
+          blockSize: bs,
+          blockCount: blockCount,
+        };
+        
+        fs = await createLittleFSFromImage(data, mountOptions);
         
         // Try to list root to verify it works
         fs.list('/');
         blockSize = bs;
-        logMsg(`Successfully mounted LittleFS with block size ${bs}`);
+        logMsg(`Successfully mounted LittleFS with block size ${bs}${isESP8266 ? ' (ESP8266 parameters)' : ''}`);
         break;
       } catch (err) {
         // Try next block size
@@ -1423,25 +1776,48 @@ async function openFatFS(partition) {
   try {
     logMsg(`Reading FatFS partition "${partition.name}" (${formatSize(partition.size)})...`);
     
-    // Read entire partition
-    const partitionProgress = document.getElementById("partitionProgress");
-    const progressBar = partitionProgress.querySelector("div");
-    partitionProgress.classList.remove("hidden");
+    let data;
     
-    const data = await espStub.readFlash(
-      partition.offset,
-      partition.size,
-      (packet, progress, totalSize) => {
-        const percent = Math.floor((progress / totalSize) * 100);
-        progressBar.style.width = percent + "%";
-      }
-    );
-    
-    partitionProgress.classList.add("hidden");
-    progressBar.style.width = "0%";
+    // Check if data was already read (from Read Flash button)
+    if (partition._readData) {
+      data = partition._readData;
+      logMsg('Using already-read flash data');
+    } else {
+      // Read entire partition
+      const partitionProgress = document.getElementById("partitionProgress");
+      const progressBar = partitionProgress.querySelector("div");
+      partitionProgress.classList.remove("hidden");
+      
+      data = await espStub.readFlash(
+        partition.offset,
+        partition.size,
+        (packet, progress, totalSize) => {
+          const percent = Math.floor((progress / totalSize) * 100);
+          progressBar.style.width = percent + "%";
+        }
+      );
+      
+      partitionProgress.classList.add("hidden");
+      progressBar.style.width = "0%";
+    }
     
     logMsg('Mounting FatFS filesystem...');
     logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
+    
+    // Check if FAT filesystem starts at offset 0x1000 (common for ESP8266/ESP32)
+    let fatOffset = 0;
+    if (data.length >= 0x1000 + 512) {
+      const bootSigAt0 = data[510] | (data[511] << 8);
+      const bootSigAt0x1000 = data[0x1000 + 510] | (data[0x1000 + 511] << 8);
+      
+      // If boot signature is at 0x1000 but not at 0, use offset 0x1000
+      if (bootSigAt0x1000 === 0xaa55 && bootSigAt0 !== 0xaa55) {
+        fatOffset = 0x1000;
+        logMsg(`Detected FAT filesystem at offset 0x${fatOffset.toString(16)}`);
+        // Slice data to start from FAT offset
+        data = data.slice(fatOffset);
+      }
+    }
     
     // Load FatFS module
     const basePath = window.location.pathname.endsWith('/') 
@@ -1453,7 +1829,7 @@ async function openFatFS(partition) {
     
     // Use 4096 block size (ESP32 standard)
     let blockSize = 4096;
-    let blockCount = Math.max(1, Math.floor(partition.size / blockSize));
+    let blockCount = Math.max(1, Math.floor(data.length / blockSize));
     if (blockCount <= 0) {
       blockCount = 1;
     }
@@ -1539,22 +1915,30 @@ async function openSPIFFS(partition) {
   try {
     logMsg(`Reading SPIFFS partition "${partition.name}" (${formatSize(partition.size)})...`);
     
-    // Read entire partition
-    const partitionProgress = document.getElementById("partitionProgress");
-    const progressBar = partitionProgress.querySelector("div");
-    partitionProgress.classList.remove("hidden");
+    let data;
     
-    const data = await espStub.readFlash(
-      partition.offset,
-      partition.size,
-      (packet, progress, totalSize) => {
-        const percent = Math.floor((progress / totalSize) * 100);
-        progressBar.style.width = percent + "%";
-      }
-    );
-    
-    partitionProgress.classList.add("hidden");
-    progressBar.style.width = "0%";
+    // Check if data was already read (from Read Flash button)
+    if (partition._readData) {
+      data = partition._readData;
+      logMsg('Using already-read flash data');
+    } else {
+      // Read entire partition
+      const partitionProgress = document.getElementById("partitionProgress");
+      const progressBar = partitionProgress.querySelector("div");
+      partitionProgress.classList.remove("hidden");
+      
+      data = await espStub.readFlash(
+        partition.offset,
+        partition.size,
+        (packet, progress, totalSize) => {
+          const percent = Math.floor((progress / totalSize) * 100);
+          progressBar.style.width = percent + "%";
+        }
+      );
+      
+      partitionProgress.classList.add("hidden");
+      progressBar.style.width = "0%";
+    }
     
     logMsg('Parsing SPIFFS filesystem...');
     logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
@@ -1565,13 +1949,32 @@ async function openSPIFFS(partition) {
       : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
     const modulePath = `${basePath}js/modules/esptool.js`;
 
-    const { SpiffsFS, SpiffsReader, SpiffsBuildConfig, DEFAULT_SPIFFS_CONFIG } = await import(modulePath);
+    const { 
+      SpiffsFS, 
+      SpiffsReader, 
+      SpiffsBuildConfig, 
+      DEFAULT_SPIFFS_CONFIG,
+      ESP8266_SPIFFS_PAGE_SIZE,
+      ESP8266_SPIFFS_BLOCK_SIZE
+    } = await import(modulePath);
     
-    // Create build config with partition size
+    // Get chip-specific parameters
+    const chipName = currentChipName || '';
+    const isESP8266 = chipName.toUpperCase().includes("ESP8266");
+    
+    // ESP8266 uses different SPIFFS parameters (from main.py)
+    const pageSize = isESP8266 ? ESP8266_SPIFFS_PAGE_SIZE : DEFAULT_SPIFFS_CONFIG.pageSize || 256;
+    const blockSize = isESP8266 ? ESP8266_SPIFFS_BLOCK_SIZE : DEFAULT_SPIFFS_CONFIG.blockSize || 4096;
+    
+    // Create build config with partition size and chip-specific parameters
     const config = new SpiffsBuildConfig({
       ...DEFAULT_SPIFFS_CONFIG,
       imgSize: partition.size,
+      pageSize: pageSize,
+      blockSize: blockSize,
     });
+    
+    logMsg(`Using SPIFFS config: page_size=${pageSize}, block_size=${blockSize}${isESP8266 ? ' (ESP8266)' : ''}`);
     
     // Create reader and parse existing files
     const reader = new SpiffsReader(data, config);
