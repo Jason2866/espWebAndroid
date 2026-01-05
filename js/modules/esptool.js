@@ -6154,8 +6154,19 @@ class ESPLoader extends EventTarget {
                         catch (err) {
                             if (err instanceof SlipReadError) {
                                 this.logger.debug(`SLIP read error at ${resp.length} bytes: ${err.message}`);
-                                // Don't send ACK on error - we want to abort this read operation
-                                // The stub needs to know we're not continuing with this chunk
+                                // Send empty SLIP frame to abort the stub's read operation
+                                // The stub expects 4 bytes (ACK), if we send less it will break out
+                                try {
+                                    // Send SLIP frame with no data (just delimiters)
+                                    const abortFrame = [0xc0, 0xc0]; // Empty SLIP frame
+                                    await this.writeToStream(abortFrame);
+                                    this.logger.debug(`Sent abort frame to stub`);
+                                    // Give stub time to process abort
+                                    await sleep(50);
+                                }
+                                catch (abortErr) {
+                                    this.logger.debug(`Abort frame error: ${abortErr}`);
+                                }
                                 // Drain input buffer to clear any stale data
                                 await this.drainInputBuffer(200);
                                 // If we've read all the data we need, break
@@ -6196,6 +6207,8 @@ class ESPLoader extends EventTarget {
                                 await this.drainInputBuffer(200);
                                 // Clear application buffer
                                 await this.flushSerialBuffers();
+                                // Short wait since stub should have aborted immediately
+                                await sleep(100);
                                 // Continue to retry the same chunk (will send NEW read command)
                             }
                             catch (drainErr) {
