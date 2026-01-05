@@ -6129,7 +6129,7 @@ class ESPLoader extends EventTarget {
             const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
             let chunkSuccess = false;
             let retryCount = 0;
-            const MAX_RETRIES = 5;
+            const MAX_RETRIES = 15;
             // Retry loop for this chunk
             while (!chunkSuccess && retryCount <= MAX_RETRIES) {
                 let resp = new Uint8Array(0);

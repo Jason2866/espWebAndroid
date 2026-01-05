@@ -1831,7 +1831,7 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
-      const MAX_RETRIES = 5;
+      const MAX_RETRIES = 15;
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
@@ -1872,13 +1872,13 @@ export class ESPLoader extends EventTarget {
                   const abortFrame = [0xc0, 0xc0]; // Empty SLIP frame
                   await this.writeToStream(abortFrame);
                   this.logger.debug(`Sent abort frame to stub`);
-                  
+
                   // Give stub time to process abort
                   await sleep(50);
                 } catch (abortErr) {
                   this.logger.debug(`Abort frame error: ${abortErr}`);
                 }
-                
+
                 // Drain input buffer to clear any stale data
                 await this.drainInputBuffer(200);
 
