@@ -7747,10 +7747,29 @@ const DEFAULT_SPIFFS_CONFIG = {
 /// <reference types="@types/w3c-web-serial" />
 const connect = async (logger) => {
     // - Request a port and open a connection.
-    const port = await navigator.serial.requestPort();
+    // Try to use requestSerialPort if available (supports WebUSB for Android)
+    let port;
+    if (typeof globalThis.requestSerialPort === 'function') {
+        port = await globalThis.requestSerialPort();
+    }
+    else {
+        port = await navigator.serial.requestPort();
+    }
     await port.open({ baudRate: ESP_ROM_BAUD });
     logger.log("Connected successfully.");
     return new ESPLoader(port, logger);
 };
+const connectWithPort = async (port, logger) => {
+    // Connect using an already opened port (useful for WebUSB wrapper)
+    if (!port) {
+        throw new Error("Port is required");
+    }
+    // Check if port is already open, if not open it
+    if (!port.readable || !port.writable) {
+        await port.open({ baudRate: ESP_ROM_BAUD });
+        logger.log("Connected successfully.");
+    }
+    return new ESPLoader(port, logger);
+};
 
-export { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32C2, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP32C5, CHIP_FAMILY_ESP32C6, CHIP_FAMILY_ESP32C61, CHIP_FAMILY_ESP32H2, CHIP_FAMILY_ESP32H21, CHIP_FAMILY_ESP32H4, CHIP_FAMILY_ESP32P4, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32S31, CHIP_FAMILY_ESP8266, DEFAULT_SPIFFS_CONFIG, ESP8266_LITTLEFS_BLOCK_SIZE, ESP8266_LITTLEFS_BLOCK_SIZE_CANDIDATES, ESP8266_LITTLEFS_PAGE_SIZE, ESP8266_SPIFFS_BLOCK_SIZE, ESP8266_SPIFFS_PAGE_SIZE, ESPLoader, FATFS_BLOCK_SIZE_CANDIDATES, FATFS_DEFAULT_BLOCK_SIZE, FilesystemType, LITTLEFS_BLOCK_SIZE_CANDIDATES, LITTLEFS_DEFAULT_BLOCK_SIZE, SpiffsBuildConfig, SpiffsFS, SpiffsReader, connect, detectFilesystemFromImage, detectFilesystemType, formatSize, getBlockSizeCandidates, getDefaultBlockSize, getESP8266FilesystemLayout, getPartitionTableOffset, parsePartitionTable, scanESP8266Filesystem };
+export { CHIP_FAMILY_ESP32, CHIP_FAMILY_ESP32C2, CHIP_FAMILY_ESP32C3, CHIP_FAMILY_ESP32C5, CHIP_FAMILY_ESP32C6, CHIP_FAMILY_ESP32C61, CHIP_FAMILY_ESP32H2, CHIP_FAMILY_ESP32H21, CHIP_FAMILY_ESP32H4, CHIP_FAMILY_ESP32P4, CHIP_FAMILY_ESP32S2, CHIP_FAMILY_ESP32S3, CHIP_FAMILY_ESP32S31, CHIP_FAMILY_ESP8266, DEFAULT_SPIFFS_CONFIG, ESP8266_LITTLEFS_BLOCK_SIZE, ESP8266_LITTLEFS_BLOCK_SIZE_CANDIDATES, ESP8266_LITTLEFS_PAGE_SIZE, ESP8266_SPIFFS_BLOCK_SIZE, ESP8266_SPIFFS_PAGE_SIZE, ESPLoader, FATFS_BLOCK_SIZE_CANDIDATES, FATFS_DEFAULT_BLOCK_SIZE, FilesystemType, LITTLEFS_BLOCK_SIZE_CANDIDATES, LITTLEFS_DEFAULT_BLOCK_SIZE, SpiffsBuildConfig, SpiffsFS, SpiffsReader, connect, connectWithPort, detectFilesystemFromImage, detectFilesystemType, formatSize, getBlockSizeCandidates, getDefaultBlockSize, getESP8266FilesystemLayout, getPartitionTableOffset, parsePartitionTable, scanESP8266Filesystem };

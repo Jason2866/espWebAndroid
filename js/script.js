@@ -379,11 +379,35 @@ async function clickConnect() {
 
   const esploaderMod = await window.esptoolPackage;
 
-  let esploader = await esploaderMod.connect({
-    log: (...args) => logMsg(...args),
-    debug: (...args) => debugMsg(...args),
-    error: (...args) => errorMsg(...args),
-  });
+  // Use unified port request that supports both Web Serial and WebUSB (Android)
+  let esploader;
+  if (typeof requestSerialPort === 'function') {
+    // Use our WebUSB wrapper if available
+    try {
+      const port = await requestSerialPort();
+      // Port is already opened by requestSerialPort, so we use connectWithPort
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      // Fall back to standard connect if our wrapper fails
+      logMsg('WebUSB/Web Serial request failed, using standard connection...');
+      esploader = await esploaderMod.connect({
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    }
+  } else {
+    // Standard connection if WebUSB wrapper not loaded
+    esploader = await esploaderMod.connect({
+      log: (...args) => logMsg(...args),
+      debug: (...args) => debugMsg(...args),
+      error: (...args) => errorMsg(...args),
+    });
+  }
   
   // Store port info for ESP32-S2 detection
   let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
