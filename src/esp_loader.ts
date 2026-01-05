@@ -649,36 +649,34 @@ export class ESPLoader extends EventTarget {
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    
+
     const startTime = Date.now();
-    
+
     while (true) {
       // Check timeout
       if (Date.now() - startTime > timeout) {
         const waitingFor = partialPacket === null ? "header" : "content";
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
-      
+
       // If no data available, wait a bit
       if (this._inputBuffer.length === 0) {
         await sleep(1);
         continue;
       }
-      
+
       // Process all available bytes without going back to outer loop
       // This is critical for handling high-speed burst transfers
       while (this._inputBuffer.length > 0) {
         const b = this._inputBuffer.shift()!;
-        
+
         if (partialPacket === null) {
           // waiting for packet header
           if (b == 0xc0) {
             partialPacket = [];
           } else {
             if (this.debug) {
-              this.logger.debug(
-                "Read invalid data: " + toHex(b),
-              );
+              this.logger.debug("Read invalid data: " + toHex(b));
               this.logger.debug(
                 "Remaining data in serial buffer: " +
                   hexFormatter(this._inputBuffer),
@@ -697,9 +695,7 @@ export class ESPLoader extends EventTarget {
             partialPacket.push(0xdb);
           } else {
             if (this.debug) {
-              this.logger.debug(
-                "Read invalid data: " + toHex(b),
-              );
+              this.logger.debug("Read invalid data: " + toHex(b));
               this.logger.debug(
                 "Remaining data in serial buffer: " +
                   hexFormatter(this._inputBuffer),
