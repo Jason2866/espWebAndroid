@@ -391,7 +391,7 @@ async function clickConnect() {
     // Use our WebUSB wrapper if available
     try {
       const port = await requestSerialPort();
-      // Port is already opened by requestSerialPort, so we use connectWithPort
+      // Use connectWithPort which will open the port if not already open
       esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),
@@ -399,7 +399,7 @@ async function clickConnect() {
       });
     } catch (err) {
       // Fall back to standard connect if our wrapper fails
-      logMsg('WebUSB/Web Serial request failed, using standard connection...');
+      logMsg(`WebUSB/Web Serial request failed (${err.message || err}), using standard connection...`);
       esploader = await esploaderMod.connect({
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),

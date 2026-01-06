@@ -388,9 +388,10 @@ async function requestSerialPort() {
         } catch (err) {
             // Check if user cancelled vs actual error
             if (err.name === 'NotFoundError') {
-                console.log('Web Serial: user cancelled, trying WebUSB...');
-            } else {
-                console.log('Web Serial error, trying WebUSB...', err.message);
+                // User explicitly cancelled - don't show another picker
+                throw new Error('Port selection cancelled');
+             }
+            console.log('Web Serial error, trying WebUSB...', err.message);
             }
         }
     }

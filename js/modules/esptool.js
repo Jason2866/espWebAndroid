@@ -7955,8 +7955,9 @@ const connect = async (logger) => {
     // - Request a port and open a connection.
     // Try to use requestSerialPort if available (supports WebUSB for Android)
     let port;
-    if (typeof globalThis.requestSerialPort === "function") {
-        port = await globalThis.requestSerialPort();
+    const customRequestPort = globalThis.requestSerialPort;
+    if (typeof customRequestPort === "function") {
+        port = await customRequestPort();
     }
     else {
         port = await navigator.serial.requestPort();
@@ -7976,8 +7977,8 @@ const connectWithPort = async (port, logger) => {
     // Check if port is already open, if not open it
     if (!port.readable || !port.writable) {
         await port.open({ baudRate: ESP_ROM_BAUD });
-        logger.log("Connected successfully.");
     }
+    logger.log("Connected successfully.");
     return new ESPLoader(port, logger);
 };
 
