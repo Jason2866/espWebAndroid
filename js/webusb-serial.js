@@ -187,8 +187,15 @@ class WebUSBSerial {
                         }
                     }
 
-                    // maxTransferSize is already set to 64 bytes in constructor
-                    // This is optimal for catching all SLIP frames on Android
+                    // Use endpoint packet size for transfer length (Android prefers max-packet)
+                    try {
+                        const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
+                        if (inEp && inEp.packetSize) {
+                            const oldSize = this.maxTransferSize;
+                            this.maxTransferSize = Math.min(inEp.packetSize, 64);
+                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using maxTransferSize=${this.maxTransferSize} (was ${oldSize})`);
+                        }
+                    } catch (e) { }
 
                     console.log(`[WebUSB] Claimed iface ${cand.iface.interfaceNumber} with IN=${this.endpointIn} OUT=${this.endpointOut}`);
                     return config;
@@ -396,12 +403,15 @@ class WebUSBSerial {
 
                             if (result.status === 'ok') {
                                 controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
+                                // IMPORTANT: Don't wait! Immediately try to read more data
+                                // This catches multiple small transfers from 0xC0 flush bug
                                 continue;
                             } else if (result.status === 'stall') {
                                 await this.device.clearHalt('in', this.endpointIn);
                                 await new Promise(r => setTimeout(r, 1));
                                 continue;
                             }
+                            // Only wait if no data was received
                             await new Promise(r => setTimeout(r, 1));
                         } catch (error) {
                             if (error.message && (error.message.includes('device unavailable') ||
@@ -415,6 +425,8 @@ class WebUSBSerial {
                                 continue;
                             }
                             console.warn('USB read error:', error.message);
+                            // Wait a bit after error before retrying
+                            await new Promise(r => setTimeout(r, 10));
                         }
                     }
                 } catch (error) {
