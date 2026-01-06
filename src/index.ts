@@ -33,7 +33,10 @@ export const connect = async (logger: Logger) => {
     port = await navigator.serial.requestPort();
   }
 
-  await port.open({ baudRate: ESP_ROM_BAUD });
+  // Only open if not already open (requestSerialPort may return an opened port)
+  if (!port.readable || !port.writable) {
+    await port.open({ baudRate: ESP_ROM_BAUD });
+  }
 
   logger.log("Connected successfully.");
 

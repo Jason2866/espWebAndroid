@@ -1,3 +1,9 @@
+// Import WebUSB serial support for Android compatibility
+import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
+
+// Make requestSerialPort available globally for esptool.js
+globalThis.requestSerialPort = requestSerialPort;
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
 let currentLittleFS = null;

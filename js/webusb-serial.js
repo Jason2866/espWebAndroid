@@ -264,7 +264,7 @@ class WebUSBSerial {
             throw new Error('Device not open');
         }
 
-        var value = 0;
+        let value = 0;
         value |= signals.dataTerminalReady ? 1 : 0;
         value |= signals.requestToSend ? 2 : 0;
 
@@ -386,7 +386,12 @@ async function requestSerialPort() {
         try {
             return await navigator.serial.requestPort();
         } catch (err) {
-            console.log('Web Serial not available or cancelled, trying WebUSB...');
+            // Check if user cancelled vs actual error
+            if (err.name === 'NotFoundError') {
+                console.log('Web Serial: user cancelled, trying WebUSB...');
+            } else {
+                console.log('Web Serial error, trying WebUSB...', err.message);
+            }
         }
     }
     
@@ -395,14 +400,12 @@ async function requestSerialPort() {
         try {
             return await WebUSBSerial.requestPort();
         } catch (err) {
-            throw new Error('Neither Web Serial nor WebUSB available or user cancelled');
+            throw new Error('Port selection cancelled or failed: ' + err.message);
         }
     }
     
     throw new Error('Neither Web Serial API nor WebUSB is supported in this browser');
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { WebUSBSerial, requestSerialPort };
-}
+// Export as ES modules
+export { WebUSBSerial, requestSerialPort };
