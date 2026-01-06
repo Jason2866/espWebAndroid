@@ -21,10 +21,8 @@ class WebUSBSerial {
             'disconnect': []
         };
         // Transfer size optimized for WebUSB on Android
-        // IMPORTANT: Must be small enough to catch all SLIP frames
-        // With patched stub loaders, frames are still small (< 64 bytes typically)
-        // Using 64 bytes ensures we don't miss any frames
-        this.maxTransferSize = 64; // Optimal for catching all SLIP frames
+        // this.maxTransferSize = 64;
+        this.maxTransferSize = 0x10000;
     }
 
     /**
