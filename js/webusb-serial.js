@@ -499,22 +499,30 @@ class WebUSBSerial {
 async function requestSerialPort() {
     // Detect if we're on Android
     const isAndroid = /Android/i.test(navigator.userAgent);
+    const hasSerial = 'serial' in navigator;
+    const hasUSB = 'usb' in navigator;
     
-    console.log(`[requestSerialPort] Platform: ${isAndroid ? 'Android' : 'Desktop'}, serial=${('serial' in navigator)}, usb=${('usb' in navigator)}`);
+    // Show detection info in UI
+    const info = `Platform: ${isAndroid ? 'Android' : 'Desktop'}, Web Serial: ${hasSerial}, WebUSB: ${hasUSB}`;
+    console.log(`[requestSerialPort] ${info}`);
+    alert(`[DEBUG] ${info}`); // Show in UI
     
     // On Android, prefer WebUSB (Web Serial doesn't work properly)
-    if (isAndroid && 'usb' in navigator) {
+    if (isAndroid && hasUSB) {
         console.log('[requestSerialPort] Using WebUSB (Android)');
+        alert('[DEBUG] Using WebUSB (Android)');
         try {
             return await WebUSBSerial.requestPort();
         } catch (err) {
             console.log('WebUSB failed, trying Web Serial...', err.message);
+            alert(`[DEBUG] WebUSB failed: ${err.message}`);
         }
     }
     
     // Try Web Serial API (preferred on desktop)
-    if ('serial' in navigator) {
+    if (hasSerial) {
         console.log('[requestSerialPort] Using Web Serial');
+        alert('[DEBUG] Using Web Serial');
         try {
             return await navigator.serial.requestPort();
         } catch (err) {
@@ -523,8 +531,9 @@ async function requestSerialPort() {
     }
     
     // Fall back to WebUSB
-    if ('usb' in navigator) {
+    if (hasUSB) {
         console.log('[requestSerialPort] Using WebUSB (fallback)');
+        alert('[DEBUG] Using WebUSB (fallback)');
         try {
             return await WebUSBSerial.requestPort();
         } catch (err) {
