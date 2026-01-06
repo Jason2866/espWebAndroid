@@ -493,12 +493,28 @@ class WebUSBSerial {
 }
 
 /**
- * Unified port request function that tries Web Serial first, then falls back to WebUSB
+ * Unified port request function that tries WebUSB first on Android, Web Serial on Desktop
  * This provides seamless support for both desktop (Web Serial) and Android (WebUSB)
  */
 async function requestSerialPort() {
-    // Try Web Serial API first (preferred on desktop)
+    // Detect if we're on Android
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    
+    console.log(`[requestSerialPort] Platform: ${isAndroid ? 'Android' : 'Desktop'}, serial=${('serial' in navigator)}, usb=${('usb' in navigator)}`);
+    
+    // On Android, prefer WebUSB (Web Serial doesn't work properly)
+    if (isAndroid && 'usb' in navigator) {
+        console.log('[requestSerialPort] Using WebUSB (Android)');
+        try {
+            return await WebUSBSerial.requestPort();
+        } catch (err) {
+            console.log('WebUSB failed, trying Web Serial...', err.message);
+        }
+    }
+    
+    // Try Web Serial API (preferred on desktop)
     if ('serial' in navigator) {
+        console.log('[requestSerialPort] Using Web Serial');
         try {
             return await navigator.serial.requestPort();
         } catch (err) {
@@ -506,8 +522,9 @@ async function requestSerialPort() {
         }
     }
     
-    // Fall back to WebUSB (for Android)
+    // Fall back to WebUSB
     if ('usb' in navigator) {
+        console.log('[requestSerialPort] Using WebUSB (fallback)');
         try {
             return await WebUSBSerial.requestPort();
         } catch (err) {
