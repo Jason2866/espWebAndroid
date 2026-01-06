@@ -21,8 +21,10 @@ class WebUSBSerial {
             'disconnect': []
         };
         // Transfer size optimized for WebUSB on Android
-        // this.maxTransferSize = 64;
-        this.maxTransferSize = 0x10000;
+        // IMPORTANT: Must be small enough to catch all SLIP frames
+        // With patched stub loaders, frames are still small (< 64 bytes typically)
+        // Using 64 bytes ensures we don't miss any frames
+        this.maxTransferSize = 64; // Optimal for catching all SLIP frames
     }
 
     /**
@@ -185,13 +187,8 @@ class WebUSBSerial {
                         }
                     }
 
-                    // Use endpoint packet size for transfer length (Android prefers max-packet)
-                    try {
-                        const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
-                        if (inEp && inEp.packetSize) {
-                            this.maxTransferSize = Math.min(inEp.packetSize, 64);
-                        }
-                    } catch (e) { }
+                    // maxTransferSize is already set to 64 bytes in constructor
+                    // This is optimal for catching all SLIP frames on Android
 
                     console.log(`[WebUSB] Claimed iface ${cand.iface.interfaceNumber} with IN=${this.endpointIn} OUT=${this.endpointOut}`);
                     return config;
