@@ -85,6 +85,8 @@ export class ESPLoader extends EventTarget {
   private _reader?: ReadableStreamDefaultReader<Uint8Array>;
   private _isESP32S2NativeUSB: boolean = false;
   private _initializationSucceeded: boolean = false;
+  private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
+  private __isReconfiguring: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -109,6 +111,32 @@ export class ESPLoader extends EventTarget {
       this._parent._totalBytesRead = value;
     } else {
       this.__totalBytesRead = value;
+    }
+  }
+
+  private get _commandLock(): Promise<[number, number[]]> {
+    return this._parent ? this._parent._commandLock : this.__commandLock;
+  }
+
+  private set _commandLock(value: Promise<[number, number[]]>) {
+    if (this._parent) {
+      this._parent._commandLock = value;
+    } else {
+      this.__commandLock = value;
+    }
+  }
+
+  private get _isReconfiguring(): boolean {
+    return this._parent
+      ? this._parent._isReconfiguring
+      : this.__isReconfiguring;
+  }
+
+  private set _isReconfiguring(value: boolean) {
+    if (this._parent) {
+      this._parent._isReconfiguring = value;
+    } else {
+      this.__isReconfiguring = value;
     }
   }
 
@@ -549,6 +577,9 @@ export class ESPLoader extends EventTarget {
    * Send a command packet, check that the command succeeded and
    * return a tuple with the value and data.
    * See the ESP Serial Protocol for more details on what value/data are
+   *
+   * Commands are serialized to prevent concurrent execution which can cause
+   * WritableStream lock contention on CP210x adapters under Windows
    */
   async checkCommand(
     opcode: number,
@@ -556,69 +587,77 @@ export class ESPLoader extends EventTarget {
     checksum = 0,
     timeout = DEFAULT_TIMEOUT,
   ): Promise<[number, number[]]> {
-    timeout = Math.min(timeout, MAX_TIMEOUT);
-    await this.sendCommand(opcode, buffer, checksum);
-    const [value, responseData] = await this.getResponse(opcode, timeout);
+    // Serialize command execution to prevent lock contention
+    const executeCommand = async (): Promise<[number, number[]]> => {
+      timeout = Math.min(timeout, MAX_TIMEOUT);
+      await this.sendCommand(opcode, buffer, checksum);
+      const [value, responseData] = await this.getResponse(opcode, timeout);
 
-    if (responseData === null) {
-      throw new Error("Didn't get enough status bytes");
-    }
+      if (responseData === null) {
+        throw new Error("Didn't get enough status bytes");
+      }
 
-    let data = responseData;
-    let statusLen = 0;
+      let data = responseData;
+      let statusLen = 0;
 
-    if (this.IS_STUB || this.chipFamily == CHIP_FAMILY_ESP8266) {
-      statusLen = 2;
-    } else if (
-      [
-        CHIP_FAMILY_ESP32,
-        CHIP_FAMILY_ESP32S2,
-        CHIP_FAMILY_ESP32S3,
-        CHIP_FAMILY_ESP32C2,
-        CHIP_FAMILY_ESP32C3,
-        CHIP_FAMILY_ESP32C5,
-        CHIP_FAMILY_ESP32C6,
-        CHIP_FAMILY_ESP32C61,
-        CHIP_FAMILY_ESP32H2,
-        CHIP_FAMILY_ESP32H4,
-        CHIP_FAMILY_ESP32H21,
-        CHIP_FAMILY_ESP32P4,
-        CHIP_FAMILY_ESP32S31,
-      ].includes(this.chipFamily)
-    ) {
-      statusLen = 4;
-    } else {
-      // When chipFamily is not yet set (e.g., during GET_SECURITY_INFO in detectChip),
-      // assume modern chips use 4-byte status
-      if (opcode === ESP_GET_SECURITY_INFO) {
+      if (this.IS_STUB || this.chipFamily == CHIP_FAMILY_ESP8266) {
+        statusLen = 2;
+      } else if (
+        [
+          CHIP_FAMILY_ESP32,
+          CHIP_FAMILY_ESP32S2,
+          CHIP_FAMILY_ESP32S3,
+          CHIP_FAMILY_ESP32C2,
+          CHIP_FAMILY_ESP32C3,
+          CHIP_FAMILY_ESP32C5,
+          CHIP_FAMILY_ESP32C6,
+          CHIP_FAMILY_ESP32C61,
+          CHIP_FAMILY_ESP32H2,
+          CHIP_FAMILY_ESP32H4,
+          CHIP_FAMILY_ESP32H21,
+          CHIP_FAMILY_ESP32P4,
+          CHIP_FAMILY_ESP32S31,
+        ].includes(this.chipFamily)
+      ) {
         statusLen = 4;
-      } else if ([2, 4].includes(data.length)) {
-        statusLen = data.length;
-      }
-    }
-
-    if (data.length < statusLen) {
-      throw new Error("Didn't get enough status bytes");
-    }
-    const status = data.slice(-statusLen, data.length);
-    data = data.slice(0, -statusLen);
-    if (this.debug) {
-      this.logger.debug("status", status);
-      this.logger.debug("value", value);
-      this.logger.debug("data", data);
-    }
-    if (status[0] == 1) {
-      if (status[1] == ROM_INVALID_RECV_MSG) {
-        // Unsupported command can result in more than one error response
-        // Use drainInputBuffer for CP210x compatibility on Windows
-        await this.drainInputBuffer(200);
-        throw new Error("Invalid (unsupported) command " + toHex(opcode));
       } else {
-        throw new Error("Command failure error code " + toHex(status[1]));
+        // When chipFamily is not yet set (e.g., during GET_SECURITY_INFO in detectChip),
+        // assume modern chips use 4-byte status
+        if (opcode === ESP_GET_SECURITY_INFO) {
+          statusLen = 4;
+        } else if ([2, 4].includes(data.length)) {
+          statusLen = data.length;
+        }
       }
-    }
 
-    return [value, data];
+      if (data.length < statusLen) {
+        throw new Error("Didn't get enough status bytes");
+      }
+      const status = data.slice(-statusLen, data.length);
+      data = data.slice(0, -statusLen);
+      if (this.debug) {
+        this.logger.debug("status", status);
+        this.logger.debug("value", value);
+        this.logger.debug("data", data);
+      }
+      if (status[0] == 1) {
+        if (status[1] == ROM_INVALID_RECV_MSG) {
+          // Unsupported command can result in more than one error response
+          // Use drainInputBuffer for CP210x compatibility on Windows
+          await this.drainInputBuffer(200);
+          throw new Error("Invalid (unsupported) command " + toHex(opcode));
+        } else {
+          throw new Error("Command failure error code " + toHex(status[1]));
+        }
+      }
+
+      return [value, data];
+    };
+
+    // Chain command execution through the lock
+    // Use both .then() handlers to ensure lock continues even on error
+    this._commandLock = this._commandLock.then(executeCommand, executeCommand);
+    return this._commandLock;
   }
 
   /**
@@ -819,6 +858,26 @@ export class ESPLoader extends EventTarget {
 
   async reconfigurePort(baud: number) {
     try {
+      // Wait for pending writes to complete
+      try {
+        await this._writeChain;
+      } catch (err) {
+        this.logger.debug(`Pending write error during reconfigure: ${err}`);
+      }
+
+      // Block new writes during port close/open
+      this._isReconfiguring = true;
+
+      // Release persistent writer before closing
+      if (this._writer) {
+        try {
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer release error during reconfigure: ${err}`);
+        }
+        this._writer = undefined;
+      }
+
       // SerialPort does not allow to be reconfigured while open so we close and re-open
       // reader.cancel() causes the Promise returned by the read() operation running on
       // the readLoop to return immediately with { value: undefined, done: true } and thus
@@ -829,12 +888,16 @@ export class ESPLoader extends EventTarget {
       // Reopen Port
       await this.port.open({ baudRate: baud });
 
+      // Port is now open - allow writes again
+      this._isReconfiguring = false;
+
       // Clear buffer again
       await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
     } catch (e) {
+      this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
     }
@@ -1583,18 +1646,98 @@ export class ESPLoader extends EventTarget {
     return espStubLoader;
   }
 
+  __writer?: WritableStreamDefaultWriter<Uint8Array>;
+  __writeChain: Promise<void> = Promise.resolve();
+
+  private get _writer(): WritableStreamDefaultWriter<Uint8Array> | undefined {
+    return this._parent ? this._parent._writer : this.__writer;
+  }
+
+  private set _writer(
+    value: WritableStreamDefaultWriter<Uint8Array> | undefined,
+  ) {
+    if (this._parent) {
+      this._parent._writer = value;
+    } else {
+      this.__writer = value;
+    }
+  }
+
+  private get _writeChain(): Promise<void> {
+    return this._parent ? this._parent._writeChain : this.__writeChain;
+  }
+
+  private set _writeChain(value: Promise<void>) {
+    if (this._parent) {
+      this._parent._writeChain = value;
+    } else {
+      this.__writeChain = value;
+    }
+  }
+
   async writeToStream(data: number[]) {
     if (!this.port.writable) {
       this.logger.debug("Port writable stream not available, skipping write");
       return;
     }
-    const writer = this.port.writable.getWriter();
-    await writer.write(new Uint8Array(data));
-    try {
-      writer.releaseLock();
-    } catch (err) {
-      this.logger.error(`Ignoring release lock error: ${err}`);
+
+    if (this._isReconfiguring) {
+      throw new Error("Cannot write during port reconfiguration");
     }
+
+    // Queue writes to prevent lock contention (critical for CP2102 on Windows)
+    this._writeChain = this._writeChain
+      .then(
+        async () => {
+          // Check if port is still writable before attempting write
+          if (!this.port.writable) {
+            throw new Error("Port became unavailable during write");
+          }
+
+          // Get or create persistent writer
+          if (!this._writer) {
+            try {
+              this._writer = this.port.writable.getWriter();
+            } catch (err) {
+              this.logger.error(`Failed to get writer: ${err}`);
+              throw err;
+            }
+          }
+
+          // Perform the write
+          await this._writer.write(new Uint8Array(data));
+        },
+        async () => {
+          // Previous write failed, but still attempt this write
+          if (!this.port.writable) {
+            throw new Error("Port became unavailable during write");
+          }
+
+          // Writer was likely cleaned up by previous error, create new one
+          if (!this._writer) {
+            this._writer = this.port.writable.getWriter();
+          }
+
+          await this._writer.write(new Uint8Array(data));
+        },
+      )
+      .catch((err) => {
+        this.logger.error(`Write error: ${err}`);
+        // Ensure writer is cleaned up on any error
+        if (this._writer) {
+          try {
+            this._writer.releaseLock();
+          } catch (e) {
+            // Ignore release errors
+          }
+          this._writer = undefined;
+        }
+        // Re-throw to propagate error
+        throw err;
+      });
+
+    // Always await the write chain to ensure errors are caught
+    await this._writeChain;
   }
 
   async disconnect() {
@@ -1606,15 +1749,50 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Port already closed, skipping disconnect");
       return;
     }
-    await this.port.writable.getWriter().close();
-    await new Promise((resolve) => {
-      if (!this._reader) {
-        resolve(undefined);
+
+    try {
+      // Wait for pending writes to complete
+      try {
+        await this._writeChain;
+      } catch (err) {
+        this.logger.debug(`Pending write error during disconnect: ${err}`);
       }
-      this.addEventListener("disconnect", resolve, { once: true });
-      this._reader!.cancel();
-    });
-    this.connected = false;
+
+      // Block new writes during disconnect
+      this._isReconfiguring = true;
+
+      // Release persistent writer before closing
+      if (this._writer) {
+        try {
+          await this._writer.close();
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer close/release error: ${err}`);
+        }
+        this._writer = undefined;
+      } else {
+        // No persistent writer exists, close stream directly
+        // This path is taken when no writes have been queued
+        try {
+          const writer = this.port.writable.getWriter();
+          await writer.close();
+          writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Direct writer close error: ${err}`);
+        }
+      }
+
+      await new Promise((resolve) => {
+        if (!this._reader) {
+          resolve(undefined);
+        }
+        this.addEventListener("disconnect", resolve, { once: true });
+        this._reader!.cancel();
+      });
+      this.connected = false;
+    } finally {
+      this._isReconfiguring = false;
+    }
   }
 
   /**
@@ -1627,99 +1805,128 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
-    this.logger.log("Reconnecting serial port...");
-
-    this.connected = false;
-    this.__inputBuffer = [];
-
-    // Cancel reader
-    if (this._reader) {
-      try {
-        await this._reader.cancel();
-      } catch (err) {
-        this.logger.debug(`Reader cancel error: ${err}`);
-      }
-      this._reader = undefined;
-    }
-
-    // Close port
     try {
-      await this.port.close();
-      this.logger.log("Port closed");
-    } catch (err) {
-      this.logger.debug(`Port close error: ${err}`);
-    }
+      this.logger.log("Reconnecting serial port...");
 
-    // Open the port
-    this.logger.debug("Opening port...");
-    try {
-      await this.port.open({ baudRate: ESP_ROM_BAUD });
-      this.connected = true;
-    } catch (err) {
-      throw new Error(`Failed to open port: ${err}`);
-    }
-
-    // Verify port streams are available
-    if (!this.port.readable || !this.port.writable) {
-      throw new Error(
-        `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
-      );
-    }
-
-    // Save chip info and flash size (no need to detect again)
-    const savedChipFamily = this.chipFamily;
-    const savedChipName = this.chipName;
-    const savedChipRevision = this.chipRevision;
-    const savedChipVariant = this.chipVariant;
-    const savedFlashSize = this.flashSize;
-
-    // Reinitialize
-    await this.hardReset(true);
-
-    if (!this._parent) {
+      this.connected = false;
       this.__inputBuffer = [];
-      this.__totalBytesRead = 0;
-      this.readLoop();
-    }
 
-    await this.flushSerialBuffers();
-    await this.sync();
+      // Wait for pending writes to complete
+      try {
+        await this._writeChain;
+      } catch (err) {
+        this.logger.debug(`Pending write error during reconnect: ${err}`);
+      }
 
-    // Restore chip info
-    this.chipFamily = savedChipFamily;
-    this.chipName = savedChipName;
-    this.chipRevision = savedChipRevision;
-    this.chipVariant = savedChipVariant;
-    this.flashSize = savedFlashSize;
+      // Block new writes during port close/open
+      this._isReconfiguring = true;
 
-    this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
+      // Release persistent writer
+      if (this._writer) {
+        try {
+          this._writer.releaseLock();
+        } catch (err) {
+          this.logger.debug(`Writer release error during reconnect: ${err}`);
+        }
+        this._writer = undefined;
+      }
 
-    // Verify port is ready
-    if (!this.port.writable || !this.port.readable) {
-      throw new Error("Port not ready after reconnect");
-    }
+      // Cancel reader
+      if (this._reader) {
+        try {
+          await this._reader.cancel();
+        } catch (err) {
+          this.logger.debug(`Reader cancel error: ${err}`);
+        }
+        this._reader = undefined;
+      }
 
-    // Load stub
-    const stubLoader = await this.runStub(true);
-    this.logger.debug("Stub loaded");
+      // Close port
+      try {
+        await this.port.close();
+        this.logger.log("Port closed");
+      } catch (err) {
+        this.logger.debug(`Port close error: ${err}`);
+      }
 
-    // Restore baudrate if it was changed
-    if (this._currentBaudRate !== ESP_ROM_BAUD) {
-      await stubLoader.setBaudrate(this._currentBaudRate);
+      // Open the port
+      this.logger.debug("Opening port...");
+      try {
+        await this.port.open({ baudRate: ESP_ROM_BAUD });
+        this.connected = true;
+      } catch (err) {
+        throw new Error(`Failed to open port: ${err}`);
+      }
 
-      // Verify port is still ready after baudrate change
-      if (!this.port.writable || !this.port.readable) {
+      // Verify port streams are available
+      if (!this.port.readable || !this.port.writable) {
         throw new Error(
-          `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+          `Port streams not available after open (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
         );
       }
-    }
 
-    // Copy stub state to this instance if we're a stub loader
-    if (this.IS_STUB) {
-      Object.assign(this, stubLoader);
+      // Port is now open and ready - allow writes for initialization
+      this._isReconfiguring = false;
+
+      // Save chip info and flash size (no need to detect again)
+      const savedChipFamily = this.chipFamily;
+      const savedChipName = this.chipName;
+      const savedChipRevision = this.chipRevision;
+      const savedChipVariant = this.chipVariant;
+      const savedFlashSize = this.flashSize;
+
+      // Reinitialize
+      await this.hardReset(true);
+
+      if (!this._parent) {
+        this.__inputBuffer = [];
+        this.__totalBytesRead = 0;
+        this.readLoop();
+      }
+
+      await this.flushSerialBuffers();
+      await this.sync();
+
+      // Restore chip info
+      this.chipFamily = savedChipFamily;
+      this.chipName = savedChipName;
+      this.chipRevision = savedChipRevision;
+      this.chipVariant = savedChipVariant;
+      this.flashSize = savedFlashSize;
+
+      this.logger.debug(`Reconnect complete (chip: ${this.chipName})`);
+
+      // Verify port is ready
+      if (!this.port.writable || !this.port.readable) {
+        throw new Error("Port not ready after reconnect");
+      }
+
+      // Load stub
+      const stubLoader = await this.runStub(true);
+      this.logger.debug("Stub loaded");
+
+      // Restore baudrate if it was changed
+      if (this._currentBaudRate !== ESP_ROM_BAUD) {
+        await stubLoader.setBaudrate(this._currentBaudRate);
+
+        // Verify port is still ready after baudrate change
+        if (!this.port.writable || !this.port.readable) {
+          throw new Error(
+            `Port not ready after baudrate change (readable: ${!!this.port.readable}, writable: ${!!this.port.writable})`,
+          );
+        }
+      }
+
+      // Copy stub state to this instance if we're a stub loader
+      if (this.IS_STUB) {
+        Object.assign(this, stubLoader);
+      }
+      this.logger.debug("Reconnection successful");
+    } catch (err) {
+      // Ensure flag is reset on error
+      this._isReconfiguring = false;
+      throw err;
     }
-    this.logger.debug("Reconnection successful");
   }
 
   /**
@@ -1831,7 +2038,8 @@ export class ESPLoader extends EventTarget {
       const chunkSize = Math.min(CHUNK_SIZE, remainingSize);
       let chunkSuccess = false;
       let retryCount = 0;
-      const MAX_RETRIES = 15;
+      const MAX_RETRIES = 5;
+      let deepRecoveryAttempted = false;
 
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
@@ -1937,9 +2145,36 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
             } else {
-              throw new Error(
-                `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries: ${err}`,
-              );
+              // All retries exhausted - attempt deep recovery by reconnecting and reloading stub
+              if (!deepRecoveryAttempted) {
+                deepRecoveryAttempted = true;
+
+                this.logger.log(
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting deep recovery (reconnect + reload stub)...`,
+                );
+
+                try {
+                  // Reconnect will close port, reopen, and reload stub
+                  await this.reconnect();
+
+                  this.logger.log(
+                    "Deep recovery successful. Resuming read from current position...",
+                  );
+
+                  // Reset retry counter to give it another chance after recovery
+                  retryCount = 0;
+                  continue;
+                } catch (reconnectErr) {
+                  throw new Error(
+                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery failed: ${reconnectErr}`,
+                  );
+                }
+              } else {
+                // Deep recovery already attempted, give up
+                throw new Error(
+                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery attempt`,
+                );
+              }
             }
           } else {
             // Non-SLIP error, don't retry
