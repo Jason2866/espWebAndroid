@@ -364,8 +364,10 @@ class WebUSBSerial {
                 index: this.controlInterface || 0
             });
             
-            // Add small delay to ensure signal is processed (important for USB-Serial chips)
-            await new Promise(resolve => setTimeout(resolve, 10));
+            // Add delay to ensure signal is processed
+            // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
+            // Increased from 10ms to 50ms for better compatibility on Android
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             return result;
         } catch (e) {
