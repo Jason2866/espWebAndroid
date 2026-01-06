@@ -78,74 +78,70 @@
   </head>
   <body>
     <header class="header">
-      <div class="left">
-        <div class="title">ESP32Tool</div>
-      </div>
-      <div class="right">
-        <div class="controls-row">
-          <label for="showlog">Show Log</label>
-          <div class="onoffswitch">
-            <input
-              type="checkbox"
-              name="showlog"
-              class="onoffswitch-checkbox"
-              id="showlog"
-            />
-            <label class="onoffswitch-label" for="showlog">
-              <span class="onoffswitch-inner"></span>
-              <span class="onoffswitch-switch"></span>
-            </label>
-          </div>
-
-          <span class="log-controls">
-            <label for="autoscroll">Autoscroll</label>
-            <div class="onoffswitch">
-              <input
-                type="checkbox"
-                name="autoscroll"
-                class="onoffswitch-checkbox"
-                id="autoscroll"
-              />
-              <label class="onoffswitch-label" for="autoscroll">
-                <span class="onoffswitch-inner"></span>
-                <span class="onoffswitch-switch"></span>
-              </label>
-            </div>
-            <button id="butClear" type="button" class="small-btn">
-              Clear
-            </button>
-          </span>
-
-          <label for="debugmode">Debug</label>
-          <div class="onoffswitch">
-            <input
-              type="checkbox"
-              name="debugmode"
-              class="onoffswitch-checkbox"
-              id="debugmode"
-            />
-            <label class="onoffswitch-label" for="debugmode">
-              <span class="onoffswitch-inner"></span>
-              <span class="onoffswitch-switch"></span>
-            </label>
-          </div>
-
-          <label for="darkmode">Dark</label>
-          <div class="onoffswitch">
-            <input
-              type="checkbox"
-              name="darkmode"
-              class="onoffswitch-checkbox"
-              id="darkmode"
-            />
-            <label class="onoffswitch-label" for="darkmode">
-              <span class="onoffswitch-inner"></span>
-              <span class="onoffswitch-switch"></span>
-            </label>
-          </div>
-        </div>
-        <select id="baudRate"></select>
+      <div class="header-content">
         <button id="butConnect" type="button">Connect</button>
+        <select id="baudRate"></select>
+        
+        <label for="showlog">Show Log</label>
+        <div class="onoffswitch">
+          <input
+            type="checkbox"
+            name="showlog"
+            class="onoffswitch-checkbox"
+            id="showlog"
+          />
+          <label class="onoffswitch-label" for="showlog">
+            <span class="onoffswitch-inner"></span>
+            <span class="onoffswitch-switch"></span>
+          </label>
+        </div>
+
+        <span class="log-controls">
+          <label for="autoscroll">Autoscroll</label>
+          <div class="onoffswitch">
+            <input
+              type="checkbox"
+              name="autoscroll"
+              class="onoffswitch-checkbox"
+              id="autoscroll"
+            />
+            <label class="onoffswitch-label" for="autoscroll">
+              <span class="onoffswitch-inner"></span>
+              <span class="onoffswitch-switch"></span>
+            </label>
+          </div>
+          <button id="butClear" type="button" class="small-btn">
+            Clear
+          </button>
+        </span>
+
+        <label for="debugmode">Debug</label>
+        <div class="onoffswitch">
+          <input
+            type="checkbox"
+            name="debugmode"
+            class="onoffswitch-checkbox"
+            id="debugmode"
+          />
+          <label class="onoffswitch-label" for="debugmode">
+            <span class="onoffswitch-inner"></span>
+            <span class="onoffswitch-switch"></span>
+          </label>
+        </div>
+
+        <label for="darkmode">Dark</label>
+        <div class="onoffswitch">
+          <input
+            type="checkbox"
+            name="darkmode"
+            class="onoffswitch-checkbox"
+            id="darkmode"
+          />
+          <label class="onoffswitch-label" for="darkmode">
+            <span class="onoffswitch-inner"></span>
+            <span class="onoffswitch-switch"></span>
+          </label>
+        </div>
       </div>
     </header>
     <main class="main">
