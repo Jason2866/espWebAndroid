@@ -353,13 +353,25 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 1 : 0;
         value |= signals.requestToSend ? 2 : 0;
 
-        return this.device.controlTransferOut({
-            requestType: 'class',
-            recipient: 'interface',
-            request: 0x22,
-            value: value,
-            index: this.controlInterface
-        });
+        console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
+
+        try {
+            const result = await this.device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: 0x22, // SET_CONTROL_LINE_STATE
+                value: value,
+                index: this.controlInterface || 0
+            });
+            
+            // Add small delay to ensure signal is processed (important for USB-Serial chips)
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            return result;
+        } catch (e) {
+            console.error(`[WebUSB] Failed to set signals: ${e.message}`);
+            throw e;
+        }
     }
 
     get readable() {
