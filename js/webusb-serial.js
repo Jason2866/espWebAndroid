@@ -49,10 +49,11 @@ class WebUSBSerial {
             throw new Error('No device selected');
         }
 
+        const baudRate = options.baudRate || 115200;
+
         // If device is already opened, just reconfigure baudrate
         if (this.device.opened) {
-            console.log('[WebUSB] Device already open, reconfiguring...');
-            const baudRate = options.baudRate || 115200;
+            console.log('[WebUSB] Device already open, reconfiguring baudrate...');
             
             // Just update line coding without closing
             try {
@@ -71,23 +72,48 @@ class WebUSBSerial {
                     recipient: 'interface',
                     request: 0x20, // SET_LINE_CODING
                     value: 0,
-                    index: this.controlInterface
+                    index: this.controlInterface || 0
                 }, lineCoding);
                 
                 console.log(`[WebUSB] Reconfigured to ${baudRate} baud`);
-                return;
+                
+                // Also update DTR/RTS
+                try {
+                    await this.device.controlTransferOut({
+                        requestType: 'class',
+                        recipient: 'interface',
+                        request: 0x22, // SET_CONTROL_LINE_STATE
+                        value: 0x03, // DTR=1, RTS=1
+                        index: this.controlInterface || 0
+                    });
+                } catch (e) {
+                    console.warn('[WebUSB] Could not set control lines:', e.message);
+                }
+                
+                return; // Success, no need to reopen
             } catch (e) {
-                console.warn('[WebUSB] Could not reconfigure, will try full reopen:', e.message);
-                // Fall through to full reopen
+                console.error('[WebUSB] Baudrate reconfiguration failed:', e.message);
+                // Don't try to reopen, just throw the error
+                throw new Error(`Unable to reconfigure baudrate: ${e.message}`);
             }
         }
 
-        // Full open sequence for first time or after error
+        // Full open sequence for first time only
+        console.log('[WebUSB] Opening device for first time...');
+        
         if (this.device.opened) {
-            try { await this.device.close(); } catch (e) { }
+            try { await this.device.close(); } catch (e) { 
+                console.warn('[WebUSB] Error closing device:', e.message);
+            }
         }
 
-        try { if (this.device.reset) { await this.device.reset(); } } catch (e) { }
+        try { 
+            if (this.device.reset) { 
+                await this.device.reset(); 
+            } 
+        } catch (e) { 
+            console.warn('[WebUSB] Device reset failed:', e.message);
+        }
 
         const attemptOpenAndClaim = async () => {
             await this.device.open();
@@ -222,7 +248,7 @@ class WebUSBSerial {
                 recipient: 'interface',
                 request: 0x20, // SET_LINE_CODING
                 value: 0,
-                index: this.controlInterface
+                index: this.controlInterface || 0
             }, lineCoding);
         } catch (e) {
             console.warn('Could not set line coding:', e.message);
@@ -235,7 +261,7 @@ class WebUSBSerial {
                 recipient: 'interface',
                 request: 0x22, // SET_CONTROL_LINE_STATE
                 value: 0x03, // DTR=1, RTS=1
-                index: this.controlInterface
+                index: this.controlInterface || 0
             });
         } catch (e) {
             console.warn('Could not set control lines:', e.message);
