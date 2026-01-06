@@ -20,7 +20,10 @@ class WebUSBSerial {
             'close': [],
             'disconnect': []
         };
-        this.maxTransferSize = 0x10000;
+        // Transfer size optimized for WebUSB on Android
+        // With patched stub loaders (0xC0 flush bug fixed), we can use larger transfers
+        // Still keeping it reasonable to avoid buffer issues on slower Android devices
+        this.maxTransferSize = 512; // Good balance between speed and reliability
     }
 
     /**
