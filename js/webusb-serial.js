@@ -90,6 +90,12 @@ class WebUSBSerial {
                     console.warn('[WebUSB] Could not set control lines:', e.message);
                 }
                 
+                // Make sure streams are created
+                if (!this.readableStream || !this.writableStream) {
+                    console.log('[WebUSB] Creating streams after baudrate change...');
+                    this._createStreams();
+                }
+                
                 return; // Success, no need to reopen
             } catch (e) {
                 console.error('[WebUSB] Baudrate reconfiguration failed:', e.message);
@@ -269,6 +275,14 @@ class WebUSBSerial {
         // Create streams only if they don't exist yet
         if (!this.readableStream || !this.writableStream) {
             this._createStreams();
+        } else {
+            // Streams exist, but make sure read loop is running
+            if (!this._readLoopRunning) {
+                console.log('[WebUSB] Restarting read loop...');
+                this._readLoopRunning = true;
+                // Note: ReadableStream can't be restarted, we need to recreate it
+                this._createStreams();
+            }
         }
 
         // Setup disconnect handler only once
