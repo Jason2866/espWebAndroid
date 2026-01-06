@@ -49,6 +49,40 @@ class WebUSBSerial {
             throw new Error('No device selected');
         }
 
+        // If device is already opened, just reconfigure baudrate
+        if (this.device.opened) {
+            console.log('[WebUSB] Device already open, reconfiguring...');
+            const baudRate = options.baudRate || 115200;
+            
+            // Just update line coding without closing
+            try {
+                const lineCoding = new Uint8Array([
+                    baudRate & 0xFF,
+                    (baudRate >> 8) & 0xFF,
+                    (baudRate >> 16) & 0xFF,
+                    (baudRate >> 24) & 0xFF,
+                    0x00, // 1 stop bit
+                    0x00, // No parity
+                    0x08  // 8 data bits
+                ]);
+
+                await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: 0x20, // SET_LINE_CODING
+                    value: 0,
+                    index: this.controlInterface
+                }, lineCoding);
+                
+                console.log(`[WebUSB] Reconfigured to ${baudRate} baud`);
+                return;
+            } catch (e) {
+                console.warn('[WebUSB] Could not reconfigure, will try full reopen:', e.message);
+                // Fall through to full reopen
+            }
+        }
+
+        // Full open sequence for first time or after error
         if (this.device.opened) {
             try { await this.device.close(); } catch (e) { }
         }
@@ -207,17 +241,21 @@ class WebUSBSerial {
             console.warn('Could not set control lines:', e.message);
         }
 
-        // Create streams
-        this._createStreams();
+        // Create streams only if they don't exist yet
+        if (!this.readableStream || !this.writableStream) {
+            this._createStreams();
+        }
 
-        // Setup disconnect handler
-        this._usbDisconnectHandler = (event) => {
-            if (event.device === this.device) {
-                this._fireEvent('close');
-                this._cleanup();
-            }
-        };
-        navigator.usb.addEventListener('disconnect', this._usbDisconnectHandler);
+        // Setup disconnect handler only once
+        if (!this._usbDisconnectHandler) {
+            this._usbDisconnectHandler = (event) => {
+                if (event.device === this.device) {
+                    this._fireEvent('close');
+                    this._cleanup();
+                }
+            };
+            navigator.usb.addEventListener('disconnect', this._usbDisconnectHandler);
+        }
     }
 
     /**
@@ -239,8 +277,16 @@ class WebUSBSerial {
                     console.warn('Error closing device:', e.message || e);
                 }
             }
-            this.device = null;
+            // Keep device reference for potential reconfiguration
         }
+    }
+
+    /**
+     * Disconnect and clear device reference (for final cleanup)
+     */
+    async disconnect() {
+        await this.close();
+        this.device = null;
     }
 
     /**

@@ -158,6 +158,7 @@ Erstelle `offline.html` und füge sie zu `CORE_ASSETS` hinzu.
 - **WebUSB benötigt USB OTG** auf Android
 - **Chrome 61+** erforderlich
 - Service Worker funktioniert nicht im Inkognito-Modus
+- **Baudrate:** Funktioniert, aber Erfolg hängt vom USB-Chip ab (siehe WEBUSB-BAUDRATE.md)
 
 ## 🐛 Troubleshooting:
 
