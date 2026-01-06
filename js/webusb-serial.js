@@ -230,8 +230,7 @@ class WebUSBSerial {
             }
         }
 
-        // Set line coding
-        const baudRate = options.baudRate || 115200;
+        // Set line coding (baudRate already declared at function start)
         try {
             const lineCoding = new Uint8Array([
                 baudRate & 0xFF,

@@ -103,7 +103,7 @@ const isElectron = window.electronAPI && window.electronAPI.isElectron;
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
-const baudRate = document.getElementById("baudRate");
+const baudRateSelect = document.getElementById("baudRate");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
@@ -197,7 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUploadRowsVisibility();
   
   autoscroll.addEventListener("click", clickAutoscroll);
-  baudRate.addEventListener("change", changeBaudRate);
+  baudRateSelect.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
   debugMode.addEventListener("click", clickDebugMode);
   showLog.addEventListener("click", clickShowLog);
@@ -235,7 +235,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   
-  if ("serial" in navigator) {
+  // Check for Web Serial or WebUSB support
+  if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
     notSupported.classList.add("hidden");
   }
@@ -251,7 +252,7 @@ function initBaudRate() {
     var option = document.createElement("option");
     option.text = rate + " Baud";
     option.value = rate;
-    baudRate.add(option);
+    baudRateSelect.add(option);
   }
 }
 
@@ -585,7 +586,7 @@ async function clickConnect() {
   }
   
   // Set the selected baud rate
-  let baud = parseInt(baudRate.value);
+  let baud = parseInt(baudRateSelect.value);
   if (baudRates.includes(baud)) {
     await espStub.setBaudrate(baud);
   }
@@ -604,9 +605,9 @@ async function clickConnect() {
  * Change handler for the Baud Rate selector.
  */
 async function changeBaudRate() {
-  saveSetting("baudrate", baudRate.value);
+  saveSetting("baudrate", baudRateSelect.value);
   if (espStub) {
-    let baud = parseInt(baudRate.value);
+    let baud = parseInt(baudRateSelect.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);
     }
@@ -901,7 +902,7 @@ async function clickErase() {
   }
   
   if (confirmed) {
-    baudRate.disabled = true;
+    baudRateSelect.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
     try {
@@ -913,7 +914,7 @@ async function clickErase() {
       errorMsg(e);
     } finally {
       butErase.disabled = false;
-      baudRate.disabled = false;
+      baudRateSelect.disabled = false;
       butProgram.disabled = getValidFiles().length == 0;
     }
   }
@@ -940,7 +941,7 @@ async function clickProgram() {
     });
   };
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   for (let i = 0; i < firmware.length; i++) {
@@ -974,7 +975,7 @@ async function clickProgram() {
     progress[i].querySelector("div").style.width = "0";
   }
   butErase.disabled = false;
-  baudRate.disabled = false;
+  baudRateSelect.disabled = false;
   butProgram.disabled = getValidFiles().length == 0;
   logMsg("To run the new firmware, please reset your device.");
 }
@@ -1063,7 +1064,7 @@ async function clickReadFlash() {
 
   const defaultFilename = `flash_0x${offset.toString(16)}_0x${size.toString(16)}.bin`;
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   butReadFlash.disabled = true;
@@ -1121,7 +1122,7 @@ async function clickReadFlash() {
     readProgress.classList.add("hidden");
     readProgress.querySelector("div").style.width = "0";
     butErase.disabled = false;
-    baudRate.disabled = false;
+    baudRateSelect.disabled = false;
     butProgram.disabled = getValidFiles().length == 0;
     butReadFlash.disabled = false;
     readOffset.disabled = false;
@@ -1451,7 +1452,7 @@ function toggleUIConnected(connected) {
 function loadAllSettings() {
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
-  baudRate.value = loadSetting("baudrate", 2000000);
+  baudRateSelect.value = loadSetting("baudrate", 2000000);
   darkMode.checked = loadSetting("darkmode", false);
   debugMode.checked = loadSetting("debugmode", true);
   showLog.checked = loadSetting("showlog", false);
