@@ -25,7 +25,9 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "publish": "electron-forge publish"
+    "publish": "electron-forge publish",
+    "generate-icons": "./generate-icons.sh",
+    "test-pwa": "npx serve . -p 5004"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
