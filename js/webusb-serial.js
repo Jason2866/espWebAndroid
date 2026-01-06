@@ -188,14 +188,20 @@ class WebUSBSerial {
                     }
 
                     // Use endpoint packet size for transfer length (Android prefers max-packet)
+                    console.log(`[WebUSB] Checking endpoint packet size...`);
                     try {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
+                        console.log(`[WebUSB] Found IN endpoint:`, inEp);
                         if (inEp && inEp.packetSize) {
                             const oldSize = this.maxTransferSize;
                             this.maxTransferSize = Math.min(inEp.packetSize, 64);
                             console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using maxTransferSize=${this.maxTransferSize} (was ${oldSize})`);
+                        } else {
+                            console.log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
                         }
-                    } catch (e) { }
+                    } catch (e) {
+                        console.log(`[WebUSB] Error checking packetSize:`, e);
+                    }
 
                     console.log(`[WebUSB] Claimed iface ${cand.iface.interfaceNumber} with IN=${this.endpointIn} OUT=${this.endpointOut}`);
                     return config;
