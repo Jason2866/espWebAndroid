@@ -2044,6 +2044,7 @@ export class ESPLoader extends EventTarget {
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
+        let lastAckedLength = 0; // Track last acknowledged length (esp32_flasher style)
 
         try {
           // Only log on first attempt or retries
@@ -2123,10 +2124,16 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment
-              const ackData = pack("<I", resp.length);
-              const slipEncodedAck = slipEncode(ackData);
-              await this.writeToStream(slipEncodedAck);
+              // Send acknowledgment ONLY when needed (esp32_flasher logic)
+              // Condition: data.length >= (lastAckedLength + maxInFlight) OR data.length >= chunkSize
+              if (resp.length >= (lastAckedLength + maxInFlight) || resp.length >= chunkSize) {
+                const ackData = pack("<I", resp.length);
+                const slipEncodedAck = slipEncode(ackData);
+                await this.writeToStream(slipEncodedAck);
+                
+                // Update lastAckedLength (esp32_flasher: lastAckedLength = Math.min(lastAckedLength + maxInFlight, totalLength))
+                lastAckedLength = Math.min(lastAckedLength + maxInFlight, chunkSize);
+              }
             }
           }
 
