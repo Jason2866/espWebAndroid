@@ -112,19 +112,6 @@ class WebUSBSerial {
                 
                 console.log(`[WebUSB] Reconfigured to ${baudRate} baud`);
                 
-                // Also update DTR/RTS
-                try {
-                    await this.device.controlTransferOut({
-                        requestType: 'class',
-                        recipient: 'interface',
-                        request: 0x22, // SET_CONTROL_LINE_STATE
-                        value: 0x03, // DTR=1, RTS=1
-                        index: this.controlInterface || 0
-                    });
-                } catch (e) {
-                    console.warn('[WebUSB] Could not set control lines:', e.message);
-                }
-                
                 // Make sure streams are created
                 if (!this.readableStream || !this.writableStream) {
                     console.log('[WebUSB] Creating streams after baudrate change...');
@@ -301,15 +288,17 @@ class WebUSBSerial {
             console.warn('Could not set line coding:', e.message);
         }
 
-        // Assert DTR/RTS
+        // Initialize DTR/RTS to known state (both LOW/deasserted)
+        // This is critical for reset sequences to work correctly
         try {
             await this.device.controlTransferOut({
                 requestType: 'class',
                 recipient: 'interface',
                 request: 0x22, // SET_CONTROL_LINE_STATE
-                value: 0x03, // DTR=1, RTS=1
+                value: 0x00, // DTR=0, RTS=0 (both deasserted)
                 index: this.controlInterface || 0
             });
+            console.log('[WebUSB] Initialized DTR=0, RTS=0');
         } catch (e) {
             console.warn('Could not set control lines:', e.message);
         }

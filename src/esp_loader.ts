@@ -485,11 +485,15 @@ export class ESPLoader extends EventTarget {
   async setRTS(state: boolean) {
     this.logger.debug(`setRTS(${state})`);
     await this.port.setSignals({ requestToSend: state });
+
     // Work-around for adapters on Windows using the usbser.sys driver:
     // generate a dummy change to DTR so that the set-control-line-state
     // request is sent with the updated RTS state and the same DTR state
     // Referenced to esptool.py
-    await this.setDTR(this.state_DTR);
+    // NOTE: Only apply this workaround on Desktop/Web Serial, not on WebUSB/Android
+    if (!this.isWebUSB()) {
+      await this.setDTR(this.state_DTR);
+    }
   }
 
   async setDTR(state: boolean) {
@@ -503,7 +507,8 @@ export class ESPLoader extends EventTarget {
    */
   private isWebUSB(): boolean {
     // WebUSBSerial class has isWebUSB flag
-    return (this.port as any).isWebUSB === true;
+    // Also check for device property as fallback (WebUSB has device, Web Serial doesn't)
+    return (this.port as any).isWebUSB === true || !!(this.port as any).device;
   }
 
   async hardReset(bootloader = false) {
@@ -974,11 +979,13 @@ export class ESPLoader extends EventTarget {
     // Strategy 2: Classic reset (for USB-to-Serial bridges)
     // Use WebUSB-specific reset on Android, standard reset on Desktop
     if (this.isWebUSB()) {
+      this.logger.log("[DEBUG] Adding Classic (WebUSB/Android) strategy");
       resetStrategies.push({
         name: "Classic (WebUSB/Android)",
         fn: async () => await this.hardResetClassicWebUSB(),
       });
     } else {
+      this.logger.log("[DEBUG] Adding Classic (Desktop) strategy");
       resetStrategies.push({
         name: "Classic",
         fn: async () => await this.hardResetClassic(),
@@ -987,6 +994,7 @@ export class ESPLoader extends EventTarget {
 
     // Strategy 3: If USB-JTAG/Serial was not tried yet, try it as fallback
     if (!isUSBJTAGSerial && !isEspressifUSB) {
+      this.logger.log("[DEBUG] Adding USB-JTAG/Serial fallback strategy");
       resetStrategies.push({
         name: "USB-JTAG/Serial (fallback)",
         fn: async () => await this.hardResetUSBJTAGSerial(),
@@ -1088,6 +1096,8 @@ export class ESPLoader extends EventTarget {
    * Prompt user to manually enter bootloader mode and wait for successful sync
    */
   async hardResetClassicWebUSB() {
+    this.logger.log("[DEBUG] hardResetClassicWebUSB called");
+
     if (this._bootloaderActive) {
       this.logger.log("Bootloader already active, skipping manual reset...");
       return;
@@ -1097,15 +1107,21 @@ export class ESPLoader extends EventTarget {
     this.logger.log("Trying automatic reset with extended delays...");
 
     try {
+      this.logger.log("[DEBUG] About to call setDTR(false)");
       // Classic reset with much longer delays for Android
       await this.setDTR(false); // IO0=HIGH
+      this.logger.log("[DEBUG] About to call setRTS(true)");
       await this.setRTS(true); // EN=LOW, chip in reset
+      this.logger.log("[DEBUG] Sleeping 500ms");
       await this.sleep(500); // Longer delay
 
+      this.logger.log("[DEBUG] About to call setDTR(true)");
       await this.setDTR(true); // IO0=LOW
+      this.logger.log("[DEBUG] About to call setRTS(false)");
       await this.setRTS(false); // EN=HIGH, chip out of reset
       await this.sleep(500); // Longer delay
 
+      this.logger.log("[DEBUG] About to call setDTR(false) final");
       await this.setDTR(false); // IO0=HIGH, done
       await this.sleep(1000); // Wait for bootloader
 
@@ -2184,7 +2200,7 @@ export class ESPLoader extends EventTarget {
           let blockSize: number;
           let maxInFlight: number;
 
-          if ((this.port as any).isWebUSB) {
+          if (this.isWebUSB()) {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
             // CRITICAL!! WebUSB: Keep values as multiples of 63 for avoiding slip errors
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 63 bytes
