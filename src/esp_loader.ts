@@ -2028,13 +2028,13 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    let CHUNK_SIZE = 64 * 0x1000;
+    let CHUNK_SIZE = 16 * 0x1000; // 64KB for Desktop (reduced from 256KB)
 
     // For WebUSB (Android), use smaller chunks but much larger than blockSize
     if ((this.port as any).isWebUSB) {
       // blockSize stays at 31 bytes (controlled in the loop below)
       // But CHUNK_SIZE can be much larger - we read multiple small blocks per chunk
-      CHUNK_SIZE = 16 * 0x1000; // 16KB for WebUSB (vs 256KB for Web Serial)
+      CHUNK_SIZE = 16 * 0x1000; // 16KB for WebUSB (same as Desktop now)
       this.logger.debug(
         `[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes (blockSize will be 31)`,
       );
@@ -2077,13 +2077,18 @@ export class ESPLoader extends EventTarget {
             maxInFlight = baseBlockSize * 8; // 8 * 63 bytes for stable ACK timing
             blockSize = baseBlockSize * 32; // 32 * 63 bytes for better throughput
           } else {
-            blockSize = Math.min(chunkSize, 0x1000);
-            maxInFlight = Math.min(chunkSize, blockSize * 2);
+            // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
+            const base = 63;
+            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
+            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
           }
 
-          this.logger.debug(
-            `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-          );
+          // Log only once at the start of the read operation
+          if (retryCount === 0 && currentAddr === addr) {
+            this.logger.debug(
+              `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+            );
+          }
 
           const pkt = pack(
             "<IIII",
@@ -2244,7 +2249,7 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
+    // this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
     return allData;
   }
 }
