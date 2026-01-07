@@ -409,16 +409,17 @@ class WebUSBSerial {
 
                             if (result.status === 'ok') {
                                 controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
-                                // Small delay for Xiaomi devices - USB stack may need time
-                                await new Promise(r => setTimeout(r, 0));
+                                // Delay for Xiaomi USB stack - needs time to process
+                                // Increased from 0ms to 2ms for better stability
+                                await new Promise(r => setTimeout(r, 2));
                                 continue;
                             } else if (result.status === 'stall') {
                                 await this.device.clearHalt('in', this.endpointIn);
-                                await new Promise(r => setTimeout(r, 1));
+                                await new Promise(r => setTimeout(r, 5));
                                 continue;
                             }
                             // Only wait if no data was received
-                            await new Promise(r => setTimeout(r, 1));
+                            await new Promise(r => setTimeout(r, 2));
                         } catch (error) {
                             if (error.message && (error.message.includes('device unavailable') ||
                                 error.message.includes('device has been lost') ||
@@ -428,11 +429,13 @@ class WebUSBSerial {
                             }
                             if (error.message && (error.message.includes('transfer was cancelled') ||
                                 error.message.includes('transfer error has occurred'))) {
+                                // Wait after transfer errors on Xiaomi devices
+                                await new Promise(r => setTimeout(r, 5));
                                 continue;
                             }
                             console.warn('USB read error:', error.message);
-                            // Wait a bit after error before retrying
-                            await new Promise(r => setTimeout(r, 10));
+                            // Wait longer after error before retrying (Xiaomi USB stack)
+                            await new Promise(r => setTimeout(r, 20));
                         }
                     }
                 } catch (error) {
