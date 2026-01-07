@@ -5624,10 +5624,14 @@ class ESPLoader extends EventTarget {
             // Infinite loop - wait until bootloader is ready
             attempt++;
             try {
+                // CRITICAL: Reset the command lock before each attempt
+                // This prevents a hung command from blocking future attempts
+                this._commandLock = Promise.resolve([0, []]);
                 // Use Promise.race to add a timeout for the entire sync operation
+                // This is important for CP2102 which needs serialized commands
                 const syncResult = await Promise.race([
-                    this.attemptSync(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error("Sync timeout")), 2000)),
+                    this.attemptSyncWithLock(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Sync timeout")), 3000)),
                 ]);
                 if (syncResult) {
                     // Sync successful - bootloader is ready!
@@ -5636,7 +5640,9 @@ class ESPLoader extends EventTarget {
                 }
             }
             catch (e) {
-                // Sync failed or timed out, continue trying
+                // Sync failed or timed out
+                // Reset command lock to prevent blocking future attempts
+                this._commandLock = Promise.resolve([0, []]);
                 if (attempt % 5 === 0) {
                     this.logger.log(`Still waiting for bootloader (attempt ${attempt})...`);
                 }
@@ -5646,19 +5652,18 @@ class ESPLoader extends EventTarget {
         }
     }
     /**
-     * @name attemptSync
-     * Attempt a single sync operation with the bootloader
+     * @name attemptSyncWithLock
+     * Attempt a single sync operation using the command lock (required for CP2102)
      * Returns true if successful, false otherwise
      */
-    async attemptSync() {
+    async attemptSyncWithLock() {
         try {
             // Clear input buffer before sync attempt
             this._inputBuffer.length = 0;
-            // Try to sync with bootloader
-            await this.sendCommand(ESP_SYNC, SYNC_PACKET);
-            // Try to get response
-            const [, data] = await this.getResponse(ESP_SYNC, 1000); // 1 second timeout
-            if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+            // Use checkCommand which properly serializes commands (important for CP2102)
+            const [, data] = await this.checkCommand(ESP_SYNC, SYNC_PACKET, 0, 1000);
+            // Check for successful sync (data should be [0, 0])
+            if (data.length >= 2 && data[0] == 0 && data[1] == 0) {
                 return true;
             }
         }
