@@ -1177,12 +1177,19 @@ export class ESPLoader extends EventTarget {
       // Use a short timeout to avoid hanging forever
       const [, data] = await this.checkCommand(ESP_SYNC, SYNC_PACKET, 0, 2000);
 
+      this.logger.debug(
+        `Sync response: data.length=${data.length}, data=[${data.slice(0, 4).join(", ")}]`,
+      );
+
       // Check for successful sync (data should be [0, 0])
       if (data.length >= 2 && data[0] == 0 && data[1] == 0) {
         return true;
       }
+
+      this.logger.debug(`Sync failed: unexpected data`);
     } catch (e) {
       // Sync failed (timeout or error)
+      this.logger.debug(`Sync error: ${(e as Error).message}`);
     }
     return false;
   }
