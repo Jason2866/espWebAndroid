@@ -224,10 +224,8 @@ class WebUSBSerial {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
                         console.log(`[WebUSB] Found IN endpoint:`, inEp);
                         if (inEp && inEp.packetSize) {
-                            const oldSize = this.maxTransferSize;
-                            // Allow up to 128 bytes, but respect endpoint packet size
-                            this.maxTransferSize = Math.min(inEp.packetSize, 128);
-                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using maxTransferSize=${this.maxTransferSize} (was ${oldSize})`);
+                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
+                            // Don't limit by packetSize - use our optimized value
                         } else {
                             console.log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
                         }
