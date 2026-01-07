@@ -1083,7 +1083,7 @@ export class ESPLoader extends EventTarget {
   /**
    * @name hardResetClassicWebUSB
    * For WebUSB on Android, automatic reset is unreliable
-   * Prompt user to manually enter bootloader mode and wait for bootloader message
+   * Prompt user to manually enter bootloader mode and wait for successful sync
    */
   async hardResetClassicWebUSB() {
     // If bootloader is already active (e.g., after reconnect), skip manual reset
@@ -1105,101 +1105,58 @@ export class ESPLoader extends EventTarget {
     this.logger.log("3. Release the BOOT button");
     this.logger.log("");
     this.logger.log("Note: The USB connection stays open during this process.");
-    this.logger.log("Waiting for bootloader message (no timeout)...");
+    this.logger.log("Waiting for bootloader to become ready...");
     this.logger.log("=".repeat(60));
 
-    // Wait indefinitely for bootloader message from ESP32
-    // There is NO fallback - manual reset is the ONLY way to proceed
-    await this.waitForBootloaderMessage();
+    // Wait for bootloader by trying to sync
+    // This is more reliable than waiting for boot messages which may not appear
+    // on the UART connected to the USB-Serial chip
+    await this.waitForBootloaderReady();
 
-    this.logger.log("✓ Bootloader mode detected! Proceeding with sync...");
+    this.logger.log("✓ Bootloader is ready! Proceeding...");
 
     // Mark bootloader as active so we don't ask for manual reset again
     this._bootloaderActive = true;
-
-    // Clear the input buffer after detecting bootloader message
-    // This removes the boot messages so they don't interfere with sync
-    this._inputBuffer.length = 0;
-
-    // Small delay to let any remaining boot messages arrive and be discarded
-    await this.sleep(100);
   }
 
   /**
-   * @name waitForBootloaderMessage
-   * Wait INDEFINITELY for ESP32 bootloader message
-   * Detects boot mode by looking for "boot:0xX (DOWNLOAD" pattern or "download" keyword
-   * This confirms the device has entered bootloader mode
-   *
-   * IMPORTANT:
-   * - This method waits FOREVER until bootloader is detected (no timeout)
-   * - This is intentional - there is NO fallback for manual reset
-   * - Reads from _inputBuffer WITHOUT removing bytes initially,
-   *   so they remain available for subsequent sync() calls
+   * @name waitForBootloaderReady
+   * Wait INDEFINITELY for bootloader to become ready by attempting sync
+   * This is more reliable than waiting for boot messages which may not appear
+   * on all UART ports
    */
-  async waitForBootloaderMessage(): Promise<void> {
-    let consoleBuffer = "";
-    let lastReadIndex = 0; // Track how many bytes we've already processed
+  async waitForBootloaderReady(): Promise<void> {
+    let attempt = 0;
 
     while (true) {
-      // Infinite loop - wait until bootloader detected
+      // Infinite loop - wait until bootloader is ready
       try {
-        // Read NEW data from input buffer WITHOUT removing it
-        if (this._inputBuffer.length > lastReadIndex) {
-          // Convert NEW bytes to ASCII string (filter printable characters)
-          let chunk = "";
-          const bytesToRead = this._inputBuffer.length;
+        attempt++;
 
-          for (let i = lastReadIndex; i < bytesToRead; i++) {
-            const b = this._inputBuffer[i]; // Read WITHOUT removing
+        // Clear input buffer before sync attempt
+        this._inputBuffer.length = 0;
 
-            if (b === 10 || b === 13) {
-              chunk += "\n";
-            } else if (b >= 32 && b <= 126) {
-              chunk += String.fromCharCode(b);
-            }
-          }
+        // Try to sync with bootloader
+        const synced = await this._sync();
 
-          lastReadIndex = bytesToRead; // Update our read position
+        if (synced) {
+          // Sync successful - bootloader is ready!
+          return;
+        }
 
-          if (chunk.length > 0) {
-            consoleBuffer += chunk;
+        // Sync failed, wait a bit and try again
+        await this.sleep(500);
 
-            // Log device messages
-            let newlineIdx = consoleBuffer.indexOf("\n");
-            while (newlineIdx !== -1) {
-              const line = consoleBuffer.slice(0, newlineIdx).trim();
-              consoleBuffer = consoleBuffer.slice(newlineIdx + 1);
-
-              if (line.length > 0) {
-                this.logger.debug(`[Device] ${line}`);
-
-                // Check for bootloader mode indicators
-                const lower = line.toLowerCase();
-
-                // Method 1: Check for boot mode line with DOWNLOAD
-                // Examples: "boot:0x1 (DOWNLOAD_BOOT...)" or "boot:0x7 (DOWNLOAD(USB/UART0/1))"
-                if (lower.includes("boot:") && lower.includes("download")) {
-                  return; // Bootloader detected!
-                }
-
-                // Method 2: Check for explicit download messages
-                // Examples: "waiting for download", "wait uart download"
-                if (lower.includes("download")) {
-                  return; // Bootloader detected!
-                }
-              }
-
-              newlineIdx = consoleBuffer.indexOf("\n");
-            }
-          }
+        // Log every 10 attempts to show we're still waiting
+        if (attempt % 10 === 0) {
+          this.logger.debug(
+            `Still waiting for bootloader (attempt ${attempt})...`,
+          );
         }
       } catch (e) {
-        // Read error, continue waiting
+        // Sync error, wait and retry
+        await this.sleep(500);
       }
-
-      // Small delay before next read attempt
-      await this.sleep(50);
     }
   }
 
