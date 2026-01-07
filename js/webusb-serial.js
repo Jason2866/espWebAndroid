@@ -495,14 +495,7 @@ class WebUSBSerial {
                 if (!this.device) {
                     throw new Error('Device not open');
                 }
-                // Add timeout to prevent hanging on CP2102 when ESP32 is not ready
-                // This is critical for manual bootloader mode detection
-                // Reduced to 500ms for faster retry cycles
-                const transferPromise = this.device.transferOut(this.endpointOut, chunk);
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('USB transfer timeout')), 500)
-                );
-                await Promise.race([transferPromise, timeoutPromise]);
+                await this.device.transferOut(this.endpointOut, chunk);
             }
         });
     }

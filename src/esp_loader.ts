@@ -1104,42 +1104,15 @@ export class ESPLoader extends EventTarget {
     this.logger.log("3. Release the BOOT button");
     this.logger.log("");
     this.logger.log("Note: The USB connection stays open during this process.");
-    this.logger.log("Waiting 7 seconds for you to complete the sequence...");
+    this.logger.log("You have 10 seconds to complete the sequence...");
     this.logger.log("=".repeat(60));
 
-    // Give user 7 seconds to complete the button sequence
-    await sleep(7000);
+    // Give user 10 seconds to complete the button sequence
+    // We MUST wait until ESP32 is in bootloader before attempting to write
+    // because transferOut() will hang indefinitely on CP2102 if device is not ready
+    await sleep(10000);
 
-    // Now try to sync
     this.logger.log("Attempting to sync with bootloader...");
-
-    let attempt = 0;
-    while (true) {
-      attempt++;
-
-      this._inputBuffer.length = 0;
-
-      try {
-        const synced = await this._sync();
-
-        if (synced) {
-          this.logger.log(`✓ Bootloader ready after ${attempt} sync attempts`);
-          break;
-        }
-      } catch (e) {
-        // Sync failed, will retry
-        if (this.debug) {
-          this.logger.debug(`Sync attempt ${attempt} failed: ${e}`);
-        }
-      }
-
-      if (attempt % 5 === 0) {
-        this.logger.log(`Still syncing (attempt ${attempt})...`);
-      }
-
-      await sleep(SYNC_TIMEOUT);
-    }
-
     this._bootloaderActive = true;
   }
 
