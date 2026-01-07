@@ -481,6 +481,14 @@ export class ESPLoader extends EventTarget {
     await this.port.setSignals({ dataTerminalReady: state });
   }
 
+  /**
+   * Check if we're using WebUSB (Android) or Web Serial (Desktop)
+   */
+  private isWebUSB(): boolean {
+    // WebUSBSerial class has isWebUSB flag
+    return (this.port as any).isWebUSB === true;
+  }
+
   async hardReset(bootloader = false) {
     if (bootloader) {
       // enter flash mode
@@ -488,8 +496,14 @@ export class ESPLoader extends EventTarget {
         await this.hardResetUSBJTAGSerial();
         this.logger.log("USB-JTAG/Serial reset.");
       } else {
-        await this.hardResetClassic();
-        this.logger.log("Classic reset.");
+        // Use different reset strategy for WebUSB (Android) vs Web Serial (Desktop)
+        if (this.isWebUSB()) {
+          await this.hardResetClassicWebUSB();
+          this.logger.log("Classic reset (WebUSB/Android).");
+        } else {
+          await this.hardResetClassic();
+          this.logger.log("Classic reset.");
+        }
       }
     } else {
       // just reset
@@ -1018,6 +1032,7 @@ export class ESPLoader extends EventTarget {
   /**
    * @name hardResetClassic
    * Classic reset sequence for USB-to-Serial bridge chips (CH340, CP2102, etc.)
+   * Standard sequence for Web Serial on Desktop
    */
   async hardResetClassic() {
     await this.setDTR(false); // IO0=HIGH
@@ -1030,6 +1045,49 @@ export class ESPLoader extends EventTarget {
 
     // Wait for chip to boot into bootloader
     await this.sleep(200);
+  }
+
+  /**
+   * @name hardResetClassicWebUSB
+   * Modified reset sequence for WebUSB on Android
+   * Based on g3gg0's research for better WebUSB/Android compatibility
+   * https://www.g3gg0.de/programming/esp32-webserial-webusb-another-rabbit-hole/
+   */
+  async hardResetClassicWebUSB() {
+    this.logger.debug(
+      "[WebUSB Reset] Starting modified reset sequence for Android...",
+    );
+
+    // Idle - both signals low
+    this.logger.debug("[WebUSB Reset] Step 1: Idle (DTR=0, RTS=0)");
+    await this.setRTS(false);
+    await this.setDTR(false);
+    await this.sleep(200); // Increased from 100ms
+
+    // Set IO0 (bootloader mode = DTR high = IO0 low)
+    this.logger.debug(
+      "[WebUSB Reset] Step 2: Set bootloader mode (DTR=1, RTS=0)",
+    );
+    await this.setDTR(true); // bootloader = true
+    await this.setRTS(false);
+    await this.sleep(200); // Increased from 100ms
+
+    // Reset - calls inverted to go through (1,1) instead of (0,0)
+    // This is important for WebUSB/Android compatibility
+    this.logger.debug("[WebUSB Reset] Step 3: Reset chip (RTS=1, DTR=0)");
+    await this.setRTS(true);
+    await this.setDTR(false); // !bootloader
+    await this.sleep(200); // Increased from 100ms
+
+    // Chip out of reset
+    this.logger.debug("[WebUSB Reset] Step 4: Release reset (DTR=0, RTS=0)");
+    await this.setDTR(false);
+    await this.setRTS(false);
+
+    // Wait for chip to boot into bootloader
+    this.logger.debug("[WebUSB Reset] Step 5: Waiting for bootloader...");
+    await this.sleep(500); // Increased from 200ms - CP2102 may need more time
+    this.logger.debug("[WebUSB Reset] Reset sequence complete");
   }
 
   /**
