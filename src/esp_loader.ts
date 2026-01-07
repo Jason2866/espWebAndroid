@@ -1104,15 +1104,13 @@ export class ESPLoader extends EventTarget {
     this.logger.log("3. Release the BOOT button");
     this.logger.log("");
     this.logger.log("Note: The USB connection stays open during this process.");
-    this.logger.log("Waiting 3 seconds for you to complete the sequence...");
+    this.logger.log("Waiting 7 seconds for you to complete the sequence...");
     this.logger.log("=".repeat(60));
 
-    // Give user time to complete the button sequence
-    // We CANNOT try to write to the port until ESP32 is in bootloader mode
-    // because writeToStream() will hang on CP2102 if device is not ready
-    await sleep(3000);
+    // Give user 7 seconds to complete the button sequence
+    await sleep(7000);
 
-    // Now ESP32 should be in bootloader mode, try to sync
+    // Now try to sync
     this.logger.log("Attempting to sync with bootloader...");
 
     let attempt = 0;
@@ -1125,7 +1123,7 @@ export class ESPLoader extends EventTarget {
         const synced = await this._sync();
 
         if (synced) {
-          this.logger.log(`✓ Bootloader ready after ${attempt} attempts`);
+          this.logger.log(`✓ Bootloader ready after ${attempt} sync attempts`);
           break;
         }
       } catch (e) {
@@ -1136,7 +1134,7 @@ export class ESPLoader extends EventTarget {
       }
 
       if (attempt % 5 === 0) {
-        this.logger.log(`Still waiting (attempt ${attempt})...`);
+        this.logger.log(`Still syncing (attempt ${attempt})...`);
       }
 
       await sleep(SYNC_TIMEOUT);
