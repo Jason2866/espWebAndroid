@@ -2080,7 +2080,7 @@ export class ESPLoader extends EventTarget {
             // WebUSB: Keep maxInFlight small (63) but allow larger blockSize for better throughput
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
             maxInFlight = baseBlockSize; // Keep at 63 bytes for stable ACK timing
-            blockSize = baseBlockSize * 8; // 8x to 504 bytes for better throughput
+            blockSize = baseBlockSize * 16; // 16x to 1008 bytes for better throughput
           } else {
             // Web Serial: use esp32_flasher formula
             blockSize = Math.min(chunkSize, 0x1000);
