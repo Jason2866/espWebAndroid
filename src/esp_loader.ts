@@ -2028,10 +2028,7 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    // CRITICAL: Chunk size must match esp32_flasher logic
-    // For WebUSB: use small chunks (31 bytes)
-    // For Web Serial: use large chunks (256KB)
-    let CHUNK_SIZE = 64 * 0x1000; // 256KB default (esp32_flasher uses this)
+    let CHUNK_SIZE = 64 * 0x1000;
 
     // For WebUSB (Android), use smaller chunks but much larger than blockSize
     if ((this.port as any).isWebUSB) {
@@ -2057,7 +2054,7 @@ export class ESPLoader extends EventTarget {
       // Retry loop for this chunk
       while (!chunkSuccess && retryCount <= MAX_RETRIES) {
         let resp = new Uint8Array(0);
-        let lastAckedLength = 0; // Track last acknowledged length (esp32_flasher style)
+        let lastAckedLength = 0; // Track last acknowledged length
 
         try {
           // Only log on first attempt or retries
@@ -2068,9 +2065,7 @@ export class ESPLoader extends EventTarget {
           }
 
           // Send read flash command for this chunk
-          // CRITICAL: blockSize calculation must match esp32_flasher
-          // esp32_flasher: blockSize = Math.min(totalLength, 0x1000)
-          // For WebUSB, we must limit blockSize to 31 bytes regardless of chunkSize
+          // blockSize = Math.min(totalLength, 0x1000)
 
           let blockSize: number;
           let maxInFlight: number;
@@ -2080,9 +2075,8 @@ export class ESPLoader extends EventTarget {
             // WebUSB: Keep maxInFlight small (63) but allow larger blockSize for better throughput
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
             maxInFlight = baseBlockSize; // Keep at 63 bytes for stable ACK timing
-            blockSize = baseBlockSize * 16; // 16x to 1008 bytes for better throughput
+            blockSize = baseBlockSize * 32; // 32x to 2016 bytes for better throughput
           } else {
-            // Web Serial: use esp32_flasher formula
             blockSize = Math.min(chunkSize, 0x1000);
             maxInFlight = Math.min(chunkSize, blockSize * 2);
           }
@@ -2149,7 +2143,7 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment ONLY when needed (esp32_flasher logic)
+              // Send acknowledgment ONLY when needed
               // Condition: data.length >= (lastAckedLength + maxInFlight) OR data.length >= chunkSize
               if (
                 resp.length >= lastAckedLength + maxInFlight ||
@@ -2159,7 +2153,7 @@ export class ESPLoader extends EventTarget {
                 const slipEncodedAck = slipEncode(ackData);
                 await this.writeToStream(slipEncodedAck);
 
-                // Update lastAckedLength (esp32_flasher: lastAckedLength = Math.min(lastAckedLength + maxInFlight, totalLength))
+                // lastAckedLength = Math.min(lastAckedLength + maxInFlight, totalLength))
                 lastAckedLength = Math.min(
                   lastAckedLength + maxInFlight,
                   chunkSize,

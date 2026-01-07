@@ -25,7 +25,7 @@ class WebUSBSerial {
             'disconnect': []
         };
         // Transfer size optimized for WebUSB on Android/Xiaomi
-        // CRITICAL: esp32_flasher uses: blockSize = (maxTransferSize - 2) / 2
+        // CRITICAL: blockSize = (maxTransferSize - 2) / 2
         // Increased from 64 to 128 bytes for better performance
         // With 128 bytes: blockSize = (128-2)/2 = 63 bytes per SLIP packet
         this.maxTransferSize = 128;
@@ -372,12 +372,12 @@ class WebUSBSerial {
 
     /**
      * Get optimal block size for flash read operations
-     * Based on esp32_flasher implementation: (maxTransferSize - 2) / 2
+     * (maxTransferSize - 2) / 2
      * This accounts for SLIP overhead and escape sequences
      * @returns {number} Optimal block size in bytes
      */
     getOptimalReadBlockSize() {
-        // Formula from esp32_flasher for WebUSB:
+        // Formula for WebUSB:
         // blockSize = (maxTransferSize - 2) / 2
         // -2 for SLIP frame delimiters (0xC0 at start/end)
         // /2 because worst case every byte could be escaped (0xDB 0xDC or 0xDB 0xDD)
