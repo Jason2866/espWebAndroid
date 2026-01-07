@@ -5567,41 +5567,26 @@ class ESPLoader extends EventTarget {
     }
     /**
      * @name hardResetClassicWebUSB
-     * Classic reset sequence for WebUSB on Android
-     * Based on esp32_flasher implementation - sets BOTH signals simultaneously
-     * This is critical for WebUSB/Android compatibility
+     * For WebUSB on Android, automatic reset is unreliable
+     * Prompt user to manually enter bootloader mode
      */
     async hardResetClassicWebUSB() {
-        this.logger.debug("[WebUSB Reset] Starting simultaneous signal reset for Android...");
-        // Helper to set both signals at once (critical for WebUSB!)
-        const setPins = async (io0PinHigh, enPinHigh) => {
-            const io0Level = io0PinHigh ? false : true; // DTR: false=high, true=low
-            const enLevel = enPinHigh ? false : true; // RTS: false=high, true=low
-            await this.port.setSignals({
-                dataTerminalReady: io0Level,
-                requestToSend: enLevel,
-            });
-            // Update state tracking
-            this.state_DTR = io0Level;
-        };
-        // Step 1: Both high (idle)
-        this.logger.debug("[WebUSB Reset] Step 1: IO0=HIGH, EN=HIGH (idle)");
-        await setPins(true, true);
-        // Step 2: Both low
-        this.logger.debug("[WebUSB Reset] Step 2: IO0=LOW, EN=LOW");
-        await setPins(false, false);
-        // Step 3: IO0=HIGH, EN=LOW (chip in reset)
-        this.logger.debug("[WebUSB Reset] Step 3: IO0=HIGH, EN=LOW (chip in reset)");
-        await setPins(true, false);
-        await this.sleep(50);
-        // Step 4: IO0=LOW, EN=HIGH (chip out of reset into bootloader)
-        this.logger.debug("[WebUSB Reset] Step 4: IO0=LOW, EN=HIGH (bootloader mode)");
-        await setPins(false, true);
-        await this.sleep(100);
-        // Step 5: Both high (done)
-        this.logger.debug("[WebUSB Reset] Step 5: IO0=HIGH, EN=HIGH (done)");
-        await setPins(true, true);
-        this.logger.debug("[WebUSB Reset] Reset sequence complete");
+        this.logger.log("=".repeat(60));
+        this.logger.log("MANUAL BOOTLOADER MODE REQUIRED");
+        this.logger.log("=".repeat(60));
+        this.logger.log("Automatic reset does not work reliably with WebUSB on Android.");
+        this.logger.log("");
+        this.logger.log("Please manually enter bootloader mode NOW:");
+        this.logger.log("1. Hold the BOOT button (or GPIO0 button)");
+        this.logger.log("2. Press and release the RESET button (or EN button)");
+        this.logger.log("3. Release the BOOT button");
+        this.logger.log("");
+        this.logger.log("Note: The USB connection stays open during this process.");
+        this.logger.log("Waiting 3 seconds for you to complete this...");
+        this.logger.log("=".repeat(60));
+        // Give user time to manually reset
+        await this.sleep(3000);
+        this.logger.log("Attempting to sync with bootloader...");
     }
     /**
      * @name sync
