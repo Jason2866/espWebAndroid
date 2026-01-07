@@ -1089,11 +1089,13 @@ export class ESPLoader extends EventTarget {
 
     // Wait for bootloader message from ESP32
     const bootloaderDetected = await this.waitForBootloaderMessage(15000); // 15 second timeout
-    
+
     if (bootloaderDetected) {
       this.logger.log("Bootloader mode detected! Proceeding with sync...");
     } else {
-      this.logger.log("Warning: Bootloader message not detected, attempting sync anyway...");
+      this.logger.log(
+        "Warning: Bootloader message not detected, attempting sync anyway...",
+      );
     }
   }
 
@@ -1114,11 +1116,11 @@ export class ESPLoader extends EventTarget {
           // Convert bytes to ASCII string (filter printable characters)
           let chunk = "";
           const bytesToRead = Math.min(this._inputBuffer.length, 100);
-          
+
           for (let i = 0; i < bytesToRead; i++) {
             const b = this._inputBuffer.shift();
             if (b === undefined) break;
-            
+
             if (b === 10 || b === 13) {
               chunk += "\n";
             } else if (b >= 32 && b <= 126) {
@@ -1128,34 +1130,36 @@ export class ESPLoader extends EventTarget {
 
           if (chunk.length > 0) {
             consoleBuffer += chunk;
-            
+
             // Log device messages
             let newlineIdx = consoleBuffer.indexOf("\n");
             while (newlineIdx !== -1) {
               const line = consoleBuffer.slice(0, newlineIdx).trim();
               consoleBuffer = consoleBuffer.slice(newlineIdx + 1);
-              
+
               if (line.length > 0) {
                 this.logger.debug(`[Device] ${line}`);
-                
+
                 // Check for bootloader mode indicators
                 const lower = line.toLowerCase();
-                
+
                 // Method 1: Check for boot mode line with DOWNLOAD
                 // Examples: "boot:0x1 (DOWNLOAD_BOOT...)" or "boot:0x7 (DOWNLOAD(USB/UART0/1))"
                 if (lower.includes("boot:") && lower.includes("download")) {
                   this.logger.log("✓ Bootloader mode detected from boot line");
                   return true;
                 }
-                
+
                 // Method 2: Check for explicit download messages
                 // Examples: "waiting for download", "wait uart download"
                 if (lower.includes("download")) {
-                  this.logger.log("✓ Bootloader mode detected from download message");
+                  this.logger.log(
+                    "✓ Bootloader mode detected from download message",
+                  );
                   return true;
                 }
               }
-              
+
               newlineIdx = consoleBuffer.indexOf("\n");
             }
           }
