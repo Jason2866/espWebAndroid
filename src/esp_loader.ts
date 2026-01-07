@@ -2028,7 +2028,18 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    const CHUNK_SIZE = 0x10000; // 64KB chunks
+    // CRITICAL: Chunk size must match esp32_flasher logic
+    // For WebUSB: use small chunks (31 bytes)
+    // For Web Serial: use large chunks (256KB)
+    let CHUNK_SIZE = 64 * 0x1000; // 256KB default (esp32_flasher uses this)
+    
+    // For WebUSB (Android), use MUCH smaller chunks
+    if ((this.port as any).isWebUSB) {
+      const maxTransferSize = (this.port as any).maxTransferSize || 64;
+      // esp32_flasher formula: blockSize = (maxTransferSize - 2) / 2
+      CHUNK_SIZE = Math.floor((maxTransferSize - 2) / 2); // = 31 bytes for WebUSB
+      this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes`);
+    }
 
     let allData = new Uint8Array(0);
     let currentAddr = addr;
@@ -2055,22 +2066,14 @@ export class ESPLoader extends EventTarget {
           }
 
           // Send read flash command for this chunk
-          // This must be inside the retry loop so we send a fresh command after errors
-          // CRITICAL: Block size must be small for WebUSB on Android (esp32_flasher uses 31 bytes)
-          // Formula: (maxTransferSize - 2) / 2 = (64 - 2) / 2 = 31 bytes
-          // This prevents SLIP frame splitting which causes "Invalid head of packet" errors
+          // CRITICAL: blockSize calculation must match esp32_flasher
+          // esp32_flasher: blockSize = Math.min(totalLength, 0x1000)
+          // For WebUSB, totalLength is already 31, so blockSize = Math.min(31, 4096) = 31
           
-          // Detect if using WebUSB (Android) and adjust block size accordingly
-          let blockSize = 0x1000; // Default 4096 bytes for Web Serial
-          let maxInFlight = 1024; // Default
+          let blockSize = Math.min(chunkSize, 0x1000); // esp32_flasher formula
+          let maxInFlight = Math.min(chunkSize, blockSize * 2); // esp32_flasher formula
           
-          // Check if port has isWebUSB flag (set by WebUSBSerial class)
-          if ((this.port as any).isWebUSB) {
-            const maxTransferSize = (this.port as any).maxTransferSize || 64;
-            blockSize = Math.floor((maxTransferSize - 2) / 2); // esp32_flasher formula
-            maxInFlight = Math.min(chunkSize, blockSize * 2); // Adjust maxInFlight too
-            this.logger.debug(`[WebUSB] Using blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
-          }
+          this.logger.debug(`[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
           
           const pkt = pack("<IIII", currentAddr, chunkSize, blockSize, maxInFlight);
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
