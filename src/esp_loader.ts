@@ -2076,10 +2076,10 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if ((this.port as any).isWebUSB) {
-            const maxTransferSize = (this.port as any).maxTransferSize || 64;
-            // WebUSB: blockSize must stay at 31 bytes
-            blockSize = Math.floor((maxTransferSize - 2) / 2); // = 31 bytes
-            maxInFlight = blockSize; // = 31 bytes
+            const maxTransferSize = (this.port as any).maxTransferSize || 128;
+            // WebUSB: blockSize calculated from maxTransferSize (now 128 bytes = 63 byte blocks)
+            blockSize = Math.floor((maxTransferSize - 2) / 2);
+            maxInFlight = blockSize;
           } else {
             // Web Serial: use esp32_flasher formula
             blockSize = Math.min(chunkSize, 0x1000);
