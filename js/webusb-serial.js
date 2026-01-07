@@ -420,6 +420,8 @@ class WebUSBSerial {
                 index: this.controlInterface || 0
             });
             
+            console.log(`[WebUSB] Control transfer result: status=${result.status}, bytesWritten=${result.bytesWritten}`);
+            
             // Add delay to ensure signal is processed
             // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
             // Increased from 10ms to 50ms for better compatibility on Android

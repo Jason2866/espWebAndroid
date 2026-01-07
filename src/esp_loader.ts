@@ -483,6 +483,7 @@ export class ESPLoader extends EventTarget {
 
   state_DTR = false;
   async setRTS(state: boolean) {
+    this.logger.debug(`setRTS(${state})`);
     await this.port.setSignals({ requestToSend: state });
     // Work-around for adapters on Windows using the usbser.sys driver:
     // generate a dummy change to DTR so that the set-control-line-state
@@ -492,6 +493,7 @@ export class ESPLoader extends EventTarget {
   }
 
   async setDTR(state: boolean) {
+    this.logger.debug(`setDTR(${state})`);
     this.state_DTR = state;
     await this.port.setSignals({ dataTerminalReady: state });
   }
