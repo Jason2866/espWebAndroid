@@ -2032,7 +2032,7 @@ export class ESPLoader extends EventTarget {
     // For WebUSB: use small chunks (31 bytes)
     // For Web Serial: use large chunks (256KB)
     let CHUNK_SIZE = 64 * 0x1000; // 256KB default (esp32_flasher uses this)
-    
+
     // For WebUSB (Android), use MUCH smaller chunks
     if ((this.port as any).isWebUSB) {
       const maxTransferSize = (this.port as any).maxTransferSize || 64;
@@ -2069,13 +2069,21 @@ export class ESPLoader extends EventTarget {
           // CRITICAL: blockSize calculation must match esp32_flasher
           // esp32_flasher: blockSize = Math.min(totalLength, 0x1000)
           // For WebUSB, totalLength is already 31, so blockSize = Math.min(31, 4096) = 31
-          
+
           let blockSize = Math.min(chunkSize, 0x1000); // esp32_flasher formula
           let maxInFlight = Math.min(chunkSize, blockSize * 2); // esp32_flasher formula
-          
-          this.logger.debug(`[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
-          
-          const pkt = pack("<IIII", currentAddr, chunkSize, blockSize, maxInFlight);
+
+          this.logger.debug(
+            `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+          );
+
+          const pkt = pack(
+            "<IIII",
+            currentAddr,
+            chunkSize,
+            blockSize,
+            maxInFlight,
+          );
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
@@ -2129,13 +2137,19 @@ export class ESPLoader extends EventTarget {
 
               // Send acknowledgment ONLY when needed (esp32_flasher logic)
               // Condition: data.length >= (lastAckedLength + maxInFlight) OR data.length >= chunkSize
-              if (resp.length >= (lastAckedLength + maxInFlight) || resp.length >= chunkSize) {
+              if (
+                resp.length >= lastAckedLength + maxInFlight ||
+                resp.length >= chunkSize
+              ) {
                 const ackData = pack("<I", resp.length);
                 const slipEncodedAck = slipEncode(ackData);
                 await this.writeToStream(slipEncodedAck);
-                
+
                 // Update lastAckedLength (esp32_flasher: lastAckedLength = Math.min(lastAckedLength + maxInFlight, totalLength))
-                lastAckedLength = Math.min(lastAckedLength + maxInFlight, chunkSize);
+                lastAckedLength = Math.min(
+                  lastAckedLength + maxInFlight,
+                  chunkSize,
+                );
               }
             }
           }
