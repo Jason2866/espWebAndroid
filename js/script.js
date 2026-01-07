@@ -387,29 +387,20 @@ async function clickConnect() {
 
   const esploaderMod = await window.esptoolPackage;
 
-  // Use unified port request that supports both Web Serial and WebUSB (Android)
-  let esploader;
-  if (typeof requestSerialPort === 'function') {
-    // Use our WebUSB wrapper if available
-    try {
-      const port = await requestSerialPort();
-      // Use connectWithPort which will open the port if not already open
-      esploader = await esploaderMod.connectWithPort(port, {
-        log: (...args) => logMsg(...args),
-        debug: (...args) => debugMsg(...args),
-        error: (...args) => errorMsg(...args),
-      });
-    } catch (err) {
-      // Fall back to standard connect if our wrapper fails
-      logMsg(`WebUSB/Web Serial request failed (${err.message || err}), using standard connection...`);
-      esploader = await esploaderMod.connect({
-        log: (...args) => logMsg(...args),
-        debug: (...args) => debugMsg(...args),
-        error: (...args) => errorMsg(...args),
-      });
-    }
-  } else {
-    // Standard connection if WebUSB wrapper not loaded
+  // ALWAYS use requestSerialPort (supports both Web Serial and WebUSB)
+  console.log('[Connect] Using requestSerialPort()');
+  try {
+    const port = await requestSerialPort();
+    console.log('[Connect] Got port, using connectWithPort()');
+    esploader = await esploaderMod.connectWithPort(port, {
+      log: (...args) => logMsg(...args),
+      debug: (...args) => debugMsg(...args),
+      error: (...args) => errorMsg(...args),
+    });
+  } catch (err) {
+    // Fall back to standard connect if requestSerialPort fails
+    console.log('[Connect] requestSerialPort failed, using esploaderMod.connect()');
+    logMsg(`Port request failed (${err.message || err}), using standard connection...`);
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
