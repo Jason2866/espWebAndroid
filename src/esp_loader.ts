@@ -2028,16 +2028,7 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    let CHUNK_SIZE = 16 * 0x1000; // 64KB for Desktop (reduced from 256KB)
-
-    // For WebUSB (Android), use smaller chunks but much larger than blockSize
-    if ((this.port as any).isWebUSB) {
-      // blockSize calculated dynamically in the loop below
-      // CHUNK_SIZE can be much larger - we read multiple small blocks per chunk
-      CHUNK_SIZE = 16 * 0x1000; // 16KB for WebUSB (same as Desktop now)
-      this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes`);
-    }
-
+    let CHUNK_SIZE = 16 * 0x1000;
     let allData = new Uint8Array(0);
     let currentAddr = addr;
     let remainingSize = size;
@@ -2062,9 +2053,6 @@ export class ESPLoader extends EventTarget {
             );
           }
 
-          // Send read flash command for this chunk
-          // blockSize = Math.min(totalLength, 0x1000)
-
           let blockSize: number;
           let maxInFlight: number;
 
@@ -2072,7 +2060,7 @@ export class ESPLoader extends EventTarget {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
             // CRITICAL!! WebUSB: Keep maxInFlight x * 63 for avoiding slip errors
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
-            blockSize = baseBlockSize * 48; // 48 * 63 = 3024 bytes (75% of Desktop)
+            blockSize = baseBlockSize * 32; // 32 * 63 = 2016 bytes
             maxInFlight = baseBlockSize * 8; // 8 * 63 = 504 bytes
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
@@ -2081,7 +2069,6 @@ export class ESPLoader extends EventTarget {
             maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
           }
 
-          // Log only once at the start of the read operation
           if (retryCount === 0 && currentAddr === addr) {
             this.logger.debug(
               `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
