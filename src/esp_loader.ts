@@ -1170,38 +1170,28 @@ export class ESPLoader extends EventTarget {
    */
   async attemptSyncWithLock(): Promise<boolean> {
     try {
-      // Clear input buffer THOROUGHLY before sync attempt
-      // The ESP32 may send boot messages that interfere with SLIP protocol
+      this._inputBuffer.length = 0;
+      await this.sleep(100);
       this._inputBuffer.length = 0;
 
-      // Wait a bit to let any boot messages arrive
-      await this.sleep(50);
+      await this.sendCommand(ESP_SYNC, SYNC_PACKET);
 
-      // Clear again to remove boot messages
-      this._inputBuffer.length = 0;
-
-      // Use checkCommand which properly serializes commands (important for CP2102)
-      // Use a short timeout to avoid hanging forever
-      const [, data] = await this.checkCommand(ESP_SYNC, SYNC_PACKET, 0, 2000);
-
-      this.logger.debug(
-        `Sync response: data.length=${data.length}, data=[${data.slice(0, 4).join(", ")}]`,
-      );
-
-      // Check for successful sync (data should be [0, 0])
-      if (data.length >= 2 && data[0] == 0 && data[1] == 0) {
-        return true;
+      for (let i = 0; i < 8; i++) {
+        try {
+          const [, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
+          if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+            return true;
+          }
+        } catch (e) {
+          // Continue trying
+        }
       }
-
-      this.logger.debug(`Sync failed: unexpected data`);
     } catch (e) {
-      // Sync failed (timeout or error)
       const errorMsg = (e as Error).message;
-
-      // If we get "Invalid head of packet", it means there's garbage in the buffer
-      // This is normal during boot - just try again
       if (errorMsg.includes("Invalid head of packet")) {
         this.logger.debug(`Boot message detected, retrying...`);
+      } else if (errorMsg.includes("Timeout")) {
+        this.logger.debug(`No response from ESP32`);
       } else {
         this.logger.debug(`Sync error: ${errorMsg}`);
       }
