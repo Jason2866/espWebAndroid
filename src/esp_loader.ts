@@ -1092,6 +1092,11 @@ export class ESPLoader extends EventTarget {
 
     if (bootloaderDetected) {
       this.logger.log("Bootloader mode detected! Proceeding with sync...");
+      // Clear the input buffer after detecting bootloader message
+      // This removes the boot messages so they don't interfere with sync
+      this._inputBuffer.length = 0;
+      // Small delay to let any remaining boot messages arrive and be discarded
+      await this.sleep(100);
     } else {
       this.logger.log(
         "Warning: Bootloader message not detected, attempting sync anyway...",
@@ -1104,22 +1109,25 @@ export class ESPLoader extends EventTarget {
    * Wait for ESP32 bootloader message
    * Detects boot mode by looking for "boot:0xX (DOWNLOAD" pattern or "download" keyword
    * This confirms the device has entered bootloader mode
+   * 
+   * IMPORTANT: This method reads from _inputBuffer WITHOUT removing bytes,
+   * so they remain available for subsequent sync() calls
    */
   async waitForBootloaderMessage(timeoutMs: number): Promise<boolean> {
     const startTime = Date.now();
     let consoleBuffer = "";
+    let lastReadIndex = 0; // Track how many bytes we've already processed
 
     while (Date.now() - startTime < timeoutMs) {
       try {
-        // Read available data from input buffer
-        if (this._inputBuffer.length > 0) {
-          // Convert bytes to ASCII string (filter printable characters)
+        // Read NEW data from input buffer WITHOUT removing it
+        if (this._inputBuffer.length > lastReadIndex) {
+          // Convert NEW bytes to ASCII string (filter printable characters)
           let chunk = "";
-          const bytesToRead = Math.min(this._inputBuffer.length, 100);
+          const bytesToRead = this._inputBuffer.length;
 
-          for (let i = 0; i < bytesToRead; i++) {
-            const b = this._inputBuffer.shift();
-            if (b === undefined) break;
+          for (let i = lastReadIndex; i < bytesToRead; i++) {
+            const b = this._inputBuffer[i]; // Read WITHOUT removing
 
             if (b === 10 || b === 13) {
               chunk += "\n";
@@ -1127,6 +1135,8 @@ export class ESPLoader extends EventTarget {
               chunk += String.fromCharCode(b);
             }
           }
+
+          lastReadIndex = bytesToRead; // Update our read position
 
           if (chunk.length > 0) {
             consoleBuffer += chunk;
