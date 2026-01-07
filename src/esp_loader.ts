@@ -1091,6 +1091,35 @@ export class ESPLoader extends EventTarget {
       return;
     }
 
+    // TEST: Try automatic reset first with extended delays
+    this.logger.log("Trying automatic reset with extended delays...");
+
+    try {
+      // Classic reset with much longer delays for Android
+      await this.setDTR(false); // IO0=HIGH
+      await this.setRTS(true); // EN=LOW, chip in reset
+      await this.sleep(500); // Longer delay
+
+      await this.setDTR(true); // IO0=LOW
+      await this.setRTS(false); // EN=HIGH, chip out of reset
+      await this.sleep(500); // Longer delay
+
+      await this.setDTR(false); // IO0=HIGH, done
+      await this.sleep(1000); // Wait for bootloader
+
+      // Try to sync
+      this.logger.log("Attempting sync after automatic reset...");
+      await this.sync();
+
+      // If we get here, it worked!
+      this.logger.log("✓ Automatic reset successful!");
+      this._bootloaderActive = true;
+      return;
+    } catch (e) {
+      this.logger.log(`Automatic reset failed: ${e}`);
+    }
+
+    // Fallback to manual reset
     this.logger.log("=".repeat(60));
     this.logger.log("MANUAL BOOTLOADER MODE REQUIRED");
     this.logger.log("=".repeat(60));
@@ -1108,11 +1137,24 @@ export class ESPLoader extends EventTarget {
     this.logger.log("=".repeat(60));
 
     // Give user 10 seconds to complete the button sequence
-    // We MUST wait until ESP32 is in bootloader before attempting to write
-    // because transferOut() will hang indefinitely on CP2102 if device is not ready
     await sleep(10000);
 
     this.logger.log("Attempting to sync with bootloader...");
+
+    // Try to clear any stalled USB endpoints before syncing
+    // This is critical for CP2102 where transferOut may have stalled
+    if ((this.port as any).device && (this.port as any).endpointOut) {
+      try {
+        await (this.port as any).device.clearHalt(
+          "out",
+          (this.port as any).endpointOut,
+        );
+        this.logger.debug("Cleared USB OUT endpoint");
+      } catch (e) {
+        this.logger.debug(`Could not clear OUT endpoint: ${e}`);
+      }
+    }
+
     this._bootloaderActive = true;
   }
 
