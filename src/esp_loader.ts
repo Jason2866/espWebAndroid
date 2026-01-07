@@ -1080,7 +1080,7 @@ export class ESPLoader extends EventTarget {
     this.logger.debug("[WebUSB Reset] Step 1: Idle (DTR=0, RTS=0)");
     await this.setRTS(false);
     await this.setDTR(false);
-    await this.sleep(200); // Increased from 100ms
+    await this.sleep(100);
 
     // Set IO0 (bootloader mode = DTR high = IO0 low)
     this.logger.debug(
@@ -1088,14 +1088,16 @@ export class ESPLoader extends EventTarget {
     );
     await this.setDTR(true); // bootloader = true
     await this.setRTS(false);
-    await this.sleep(200); // Increased from 100ms
+    await this.sleep(100);
 
     // Reset - calls inverted to go through (1,1) instead of (0,0)
     // This is important for WebUSB/Android compatibility
     this.logger.debug("[WebUSB Reset] Step 3: Reset chip (RTS=1, DTR=0)");
     await this.setRTS(true);
     await this.setDTR(false); // !bootloader
-    await this.sleep(200); // Increased from 100ms
+    // RTS set as Windows/Android only propagates DTR on RTS setting
+    await this.setRTS(true);
+    await this.sleep(100);
 
     // Chip out of reset
     this.logger.debug("[WebUSB Reset] Step 4: Release reset (DTR=0, RTS=0)");
@@ -1104,7 +1106,7 @@ export class ESPLoader extends EventTarget {
 
     // Wait for chip to boot into bootloader
     this.logger.debug("[WebUSB Reset] Step 5: Waiting for bootloader...");
-    await this.sleep(500); // Increased from 200ms - CP2102 may need more time
+    await this.sleep(200);
     this.logger.debug("[WebUSB Reset] Reset sequence complete");
   }
 
