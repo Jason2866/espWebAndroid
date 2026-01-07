@@ -1084,41 +1084,41 @@ export class ESPLoader extends EventTarget {
     this.logger.log("3. Release the BOOT button");
     this.logger.log("");
     this.logger.log("Note: The USB connection stays open during this process.");
-    this.logger.log("Waiting for bootloader message...");
+    this.logger.log("Waiting for bootloader message (no timeout)...");
     this.logger.log("=".repeat(60));
 
-    // Wait for bootloader message from ESP32
-    const bootloaderDetected = await this.waitForBootloaderMessage(15000); // 15 second timeout
+    // Wait indefinitely for bootloader message from ESP32
+    // There is NO fallback - manual reset is the ONLY way to proceed
+    await this.waitForBootloaderMessage();
 
-    if (bootloaderDetected) {
-      this.logger.log("Bootloader mode detected! Proceeding with sync...");
-      // Clear the input buffer after detecting bootloader message
-      // This removes the boot messages so they don't interfere with sync
-      this._inputBuffer.length = 0;
-      // Small delay to let any remaining boot messages arrive and be discarded
-      await this.sleep(100);
-    } else {
-      this.logger.log(
-        "Warning: Bootloader message not detected, attempting sync anyway...",
-      );
-    }
+    this.logger.log("✓ Bootloader mode detected! Proceeding with sync...");
+
+    // Clear the input buffer after detecting bootloader message
+    // This removes the boot messages so they don't interfere with sync
+    this._inputBuffer.length = 0;
+
+    // Small delay to let any remaining boot messages arrive and be discarded
+    await this.sleep(100);
   }
 
   /**
    * @name waitForBootloaderMessage
-   * Wait for ESP32 bootloader message
+   * Wait INDEFINITELY for ESP32 bootloader message
    * Detects boot mode by looking for "boot:0xX (DOWNLOAD" pattern or "download" keyword
    * This confirms the device has entered bootloader mode
    *
-   * IMPORTANT: This method reads from _inputBuffer WITHOUT removing bytes,
-   * so they remain available for subsequent sync() calls
+   * IMPORTANT:
+   * - This method waits FOREVER until bootloader is detected (no timeout)
+   * - This is intentional - there is NO fallback for manual reset
+   * - Reads from _inputBuffer WITHOUT removing bytes initially,
+   *   so they remain available for subsequent sync() calls
    */
-  async waitForBootloaderMessage(timeoutMs: number): Promise<boolean> {
-    const startTime = Date.now();
+  async waitForBootloaderMessage(): Promise<void> {
     let consoleBuffer = "";
     let lastReadIndex = 0; // Track how many bytes we've already processed
 
-    while (Date.now() - startTime < timeoutMs) {
+    while (true) {
+      // Infinite loop - wait until bootloader detected
       try {
         // Read NEW data from input buffer WITHOUT removing it
         if (this._inputBuffer.length > lastReadIndex) {
@@ -1156,17 +1156,13 @@ export class ESPLoader extends EventTarget {
                 // Method 1: Check for boot mode line with DOWNLOAD
                 // Examples: "boot:0x1 (DOWNLOAD_BOOT...)" or "boot:0x7 (DOWNLOAD(USB/UART0/1))"
                 if (lower.includes("boot:") && lower.includes("download")) {
-                  this.logger.log("✓ Bootloader mode detected from boot line");
-                  return true;
+                  return; // Bootloader detected!
                 }
 
                 // Method 2: Check for explicit download messages
                 // Examples: "waiting for download", "wait uart download"
                 if (lower.includes("download")) {
-                  this.logger.log(
-                    "✓ Bootloader mode detected from download message",
-                  );
-                  return true;
+                  return; // Bootloader detected!
                 }
               }
 
@@ -1181,8 +1177,6 @@ export class ESPLoader extends EventTarget {
       // Small delay before next read attempt
       await this.sleep(50);
     }
-
-    return false; // Timeout reached without detecting bootloader
   }
 
   /**
