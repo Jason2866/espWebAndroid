@@ -506,11 +506,21 @@ export class ESPLoader extends EventTarget {
         }
       }
     } else {
-      // just reset
-      await this.setRTS(true); // EN->LOW
-      await this.sleep(100);
-      await this.setRTS(false);
-      this.logger.log("Hard reset.");
+      // just reset (no bootloader mode)
+      if (this.isWebUSB()) {
+        // WebUSB: Use longer delays for better compatibility
+        await this.setRTS(true); // EN->LOW
+        await this.sleep(200);
+        await this.setRTS(false);
+        await this.sleep(200);
+        this.logger.log("Hard reset (WebUSB).");
+      } else {
+        // Web Serial: Standard reset
+        await this.setRTS(true); // EN->LOW
+        await this.sleep(100);
+        await this.setRTS(false);
+        this.logger.log("Hard reset.");
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -945,10 +955,18 @@ export class ESPLoader extends EventTarget {
     }
 
     // Strategy 2: Classic reset (for USB-to-Serial bridges)
-    resetStrategies.push({
-      name: "Classic",
-      fn: async () => await this.hardResetClassic(),
-    });
+    // Use WebUSB-specific reset on Android, standard reset on Desktop
+    if (this.isWebUSB()) {
+      resetStrategies.push({
+        name: "Classic (WebUSB/Android)",
+        fn: async () => await this.hardResetClassicWebUSB(),
+      });
+    } else {
+      resetStrategies.push({
+        name: "Classic",
+        fn: async () => await this.hardResetClassic(),
+      });
+    }
 
     // Strategy 3: If USB-JTAG/Serial was not tried yet, try it as fallback
     if (!isUSBJTAGSerial && !isEspressifUSB) {
