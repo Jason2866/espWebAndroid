@@ -1086,7 +1086,6 @@ export class ESPLoader extends EventTarget {
    * Prompt user to manually enter bootloader mode and wait for successful sync
    */
   async hardResetClassicWebUSB() {
-    // If bootloader is already active (e.g., after reconnect), skip manual reset
     if (this._bootloaderActive) {
       this.logger.log("Bootloader already active, skipping manual reset...");
       return;
@@ -1105,110 +1104,45 @@ export class ESPLoader extends EventTarget {
     this.logger.log("3. Release the BOOT button");
     this.logger.log("");
     this.logger.log("Note: The USB connection stays open during this process.");
-    this.logger.log("Waiting for bootloader to become ready...");
+    this.logger.log("Waiting 3 seconds for you to complete the sequence...");
     this.logger.log("=".repeat(60));
 
-    // Wait for bootloader by trying to sync
-    // This is more reliable than waiting for boot messages which may not appear
-    // on the UART connected to the USB-Serial chip
-    await this.waitForBootloaderReady();
+    // Give user time to complete the button sequence
+    // We CANNOT try to write to the port until ESP32 is in bootloader mode
+    // because writeToStream() will hang on CP2102 if device is not ready
+    await sleep(3000);
 
-    this.logger.log("✓ Bootloader is ready! Proceeding...");
-
-    // Mark bootloader as active so we don't ask for manual reset again
-    this._bootloaderActive = true;
-  }
-
-  /**
-   * @name waitForBootloaderReady
-   * Wait INDEFINITELY for bootloader to become ready by attempting sync
-   * This is more reliable than waiting for boot messages which may not appear
-   * on all UART ports
-   */
-  async waitForBootloaderReady(): Promise<void> {
-    let attempt = 0;
-
+    // Now ESP32 should be in bootloader mode, try to sync
     this.logger.log("Attempting to sync with bootloader...");
 
+    let attempt = 0;
     while (true) {
-      // Infinite loop - wait until bootloader is ready
       attempt++;
 
-      try {
-        // Try to sync with a timeout
-        // Note: We cannot reset _commandLock as it breaks the promise chain
-        const syncResult = await Promise.race([
-          this.attemptSyncWithLock(),
-          new Promise<boolean>((resolve) =>
-            setTimeout(() => resolve(false), 3000),
-          ),
-        ]);
+      this._inputBuffer.length = 0;
 
-        if (syncResult) {
-          // Sync successful - bootloader is ready!
-          this.logger.log(`✓ Sync successful after ${attempt} attempts`);
-          return;
+      try {
+        const synced = await this._sync();
+
+        if (synced) {
+          this.logger.log(`✓ Bootloader ready after ${attempt} attempts`);
+          break;
         }
       } catch (e) {
-        // Sync failed with error
-      }
-
-      // Log every 5 attempts to show we're still waiting
-      if (attempt % 5 === 0) {
-        this.logger.log(`Still waiting for bootloader (attempt ${attempt})...`);
-      }
-
-      // Wait before next attempt
-      await this.sleep(300);
-    }
-  }
-
-  /**
-   * @name attemptSyncWithLock
-   * Attempt a single sync operation using the command lock (required for CP2102)
-   * Returns true if successful, false otherwise
-   */
-  async attemptSyncWithLock(): Promise<boolean> {
-    try {
-      this._inputBuffer.length = 0;
-      await this.sleep(50);
-      this._inputBuffer.length = 0;
-
-      this.logger.debug(`Sending SYNC command...`);
-
-      // Build SYNC packet manually
-      const packet = slipEncode([
-        ...pack("<BBHI", 0x00, ESP_SYNC, SYNC_PACKET.length, 0),
-        ...SYNC_PACKET,
-      ]);
-
-      // Write with timeout to prevent hanging on CP2102
-      await Promise.race([
-        this.writeToStream(packet),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("writeToStream timeout")), 1000),
-        ),
-      ]);
-
-      this.logger.debug(`SYNC command sent, waiting for response...`);
-
-      for (let i = 0; i < 8; i++) {
-        try {
-          const [, data] = await this.getResponse(ESP_SYNC, 500);
-          if (data.length > 1 && data[0] == 0 && data[1] == 0) {
-            this.logger.debug(`SYNC successful on attempt ${i + 1}`);
-            return true;
-          }
-        } catch (e) {
-          // Continue trying
+        // Sync failed, will retry
+        if (this.debug) {
+          this.logger.debug(`Sync attempt ${attempt} failed: ${e}`);
         }
       }
-      this.logger.debug(`All 8 response attempts failed`);
-    } catch (e) {
-      const errorMsg = (e as Error).message;
-      this.logger.debug(`Sync error: ${errorMsg}`);
+
+      if (attempt % 5 === 0) {
+        this.logger.log(`Still waiting (attempt ${attempt})...`);
+      }
+
+      await sleep(SYNC_TIMEOUT);
     }
-    return false;
+
+    this._bootloaderActive = true;
   }
 
   /**
