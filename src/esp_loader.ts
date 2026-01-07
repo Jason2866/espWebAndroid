@@ -1175,7 +1175,16 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
 
       this.logger.debug(`Sending SYNC command...`);
-      await this.sendCommand(ESP_SYNC, SYNC_PACKET);
+
+      // Wrap sendCommand with timeout to prevent hanging
+      await Promise.race([
+        this.sendCommand(ESP_SYNC, SYNC_PACKET),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("sendCommand timeout")), 1000),
+        ),
+      ]);
+
+      this.logger.debug(`SYNC command sent, waiting for response...`);
 
       for (let i = 0; i < 8; i++) {
         try {
