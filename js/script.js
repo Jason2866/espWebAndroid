@@ -399,10 +399,14 @@ async function clickConnect() {
                     /Linux armv/i.test(platform) ||
                     /Linux aarch64/i.test(platform);
   
-  console.log(`[Connect] Platform: ${isAndroid ? 'Android' : 'Desktop'}`);
-  console.log(`[Connect] User-Agent: ${userAgent}`);
+  const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+  console.log(`[Connect] ${platformMsg}`);
   console.log(`[Connect] navigator.platform: ${platform}`);
   console.log(`[Connect] isAndroid: ${isAndroid}`);
+  
+  // Also log to UI
+  logMsg(platformMsg);
+  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
   let esploader;
   
