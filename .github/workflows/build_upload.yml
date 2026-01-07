@@ -84,6 +84,7 @@ jobs:
         with:
           commit_message: "Github Action: Updated dist files and PWA assets"
           file_pattern: "js/modules/*.js icons/*.png screenshots/*.png favicon.ico apple-touch-icon.png"
+          add_options: '-f'
       - name: Publish to NPM registry (OIDC Trusted Publishing)
         uses: JS-DevTools/npm-publish@v4
         with:
