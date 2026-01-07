@@ -1176,11 +1176,17 @@ export class ESPLoader extends EventTarget {
 
       this.logger.debug(`Sending SYNC command...`);
 
-      // Wrap sendCommand with timeout to prevent hanging
+      // Build SYNC packet manually
+      const packet = slipEncode([
+        ...pack("<BBHI", 0x00, ESP_SYNC, SYNC_PACKET.length, 0),
+        ...SYNC_PACKET,
+      ]);
+
+      // Write with timeout to prevent hanging on CP2102
       await Promise.race([
-        this.sendCommand(ESP_SYNC, SYNC_PACKET),
+        this.writeToStream(packet),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("sendCommand timeout")), 1000),
+          setTimeout(() => reject(new Error("writeToStream timeout")), 1000),
         ),
       ]);
 
