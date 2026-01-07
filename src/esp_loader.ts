@@ -2038,7 +2038,9 @@ export class ESPLoader extends EventTarget {
       // blockSize stays at 31 bytes (controlled in the loop below)
       // But CHUNK_SIZE can be much larger - we read multiple small blocks per chunk
       CHUNK_SIZE = 16 * 0x1000; // 16KB for WebUSB (vs 256KB for Web Serial)
-      this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes (blockSize will be 31)`);
+      this.logger.debug(
+        `[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes (blockSize will be 31)`,
+      );
     }
 
     let allData = new Uint8Array(0);
@@ -2072,7 +2074,7 @@ export class ESPLoader extends EventTarget {
 
           let blockSize: number;
           let maxInFlight: number;
-          
+
           if ((this.port as any).isWebUSB) {
             const maxTransferSize = (this.port as any).maxTransferSize || 64;
             // WebUSB: blockSize must stay at 31 bytes
