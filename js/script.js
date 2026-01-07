@@ -389,6 +389,7 @@ async function clickConnect() {
 
   // ALWAYS use requestSerialPort (supports both Web Serial and WebUSB)
   console.log('[Connect] Using requestSerialPort()');
+  let esploader;
   try {
     const port = await requestSerialPort();
     console.log('[Connect] Got port, using connectWithPort()');
