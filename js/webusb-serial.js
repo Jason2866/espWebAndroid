@@ -26,10 +26,9 @@ class WebUSBSerial {
         };
         // Transfer size optimized for WebUSB on Android/Xiaomi
         // CRITICAL: esp32_flasher uses: blockSize = (maxTransferSize - 2) / 2
-        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
-        // This prevents SLIP frame splitting across USB packets which causes
-        // "Invalid head of packet" and "Timed out waiting for packet content" errors
-        this.maxTransferSize = 64;
+        // Increased from 64 to 128 bytes for better performance
+        // With 128 bytes: blockSize = (128-2)/2 = 63 bytes per SLIP packet
+        this.maxTransferSize = 128;
         
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;
@@ -226,7 +225,8 @@ class WebUSBSerial {
                         console.log(`[WebUSB] Found IN endpoint:`, inEp);
                         if (inEp && inEp.packetSize) {
                             const oldSize = this.maxTransferSize;
-                            this.maxTransferSize = Math.min(inEp.packetSize, 64);
+                            // Allow up to 128 bytes, but respect endpoint packet size
+                            this.maxTransferSize = Math.min(inEp.packetSize, 128);
                             console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using maxTransferSize=${this.maxTransferSize} (was ${oldSize})`);
                         } else {
                             console.log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
