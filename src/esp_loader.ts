@@ -2033,13 +2033,12 @@ export class ESPLoader extends EventTarget {
     // For Web Serial: use large chunks (256KB)
     let CHUNK_SIZE = 64 * 0x1000; // 256KB default (esp32_flasher uses this)
 
-    // For WebUSB (Android), use MUCH smaller chunks
+    // For WebUSB (Android), use smaller chunks but much larger than blockSize
     if ((this.port as any).isWebUSB) {
-      const maxTransferSize = (this.port as any).maxTransferSize || 64;
-      // esp32_flasher formula: blockSize = (maxTransferSize - 2) / 2
-      // Multiply by 8 for better speed (31 * 8 = 248 bytes)
-      CHUNK_SIZE = Math.floor((maxTransferSize - 2) / 2) * 8; // = 248 bytes for WebUSB
-      this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes`);
+      // blockSize stays at 31 bytes (controlled in the loop below)
+      // But CHUNK_SIZE can be much larger - we read multiple small blocks per chunk
+      CHUNK_SIZE = 16 * 0x1000; // 16KB for WebUSB (vs 256KB for Web Serial)
+      this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes (blockSize will be 31)`);
     }
 
     let allData = new Uint8Array(0);
@@ -2069,10 +2068,21 @@ export class ESPLoader extends EventTarget {
           // Send read flash command for this chunk
           // CRITICAL: blockSize calculation must match esp32_flasher
           // esp32_flasher: blockSize = Math.min(totalLength, 0x1000)
-          // For WebUSB, totalLength is already 31, so blockSize = Math.min(31, 4096) = 31
+          // For WebUSB, we must limit blockSize to 31 bytes regardless of chunkSize
 
-          let blockSize = Math.min(chunkSize, 0x1000); // esp32_flasher formula
-          let maxInFlight = Math.min(chunkSize, blockSize * 2); // esp32_flasher formula
+          let blockSize: number;
+          let maxInFlight: number;
+          
+          if ((this.port as any).isWebUSB) {
+            const maxTransferSize = (this.port as any).maxTransferSize || 64;
+            // WebUSB: blockSize must stay at 31 bytes
+            blockSize = Math.floor((maxTransferSize - 2) / 2); // = 31 bytes
+            maxInFlight = blockSize; // = 31 bytes
+          } else {
+            // Web Serial: use esp32_flasher formula
+            blockSize = Math.min(chunkSize, 0x1000);
+            maxInFlight = Math.min(chunkSize, blockSize * 2);
+          }
 
           this.logger.debug(
             `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
