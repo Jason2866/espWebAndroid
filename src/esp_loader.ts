@@ -1135,16 +1135,12 @@ export class ESPLoader extends EventTarget {
       attempt++;
 
       try {
-        // CRITICAL: Reset the command lock before each attempt
-        // This prevents a hung command from blocking future attempts
-        this._commandLock = Promise.resolve([0, []]);
-
-        // Use Promise.race to add a timeout for the entire sync operation
-        // This is important for CP2102 which needs serialized commands
+        // Try to sync with a timeout
+        // Note: We cannot reset _commandLock as it breaks the promise chain
         const syncResult = await Promise.race([
           this.attemptSyncWithLock(),
-          new Promise<boolean>((_, reject) =>
-            setTimeout(() => reject(new Error("Sync timeout")), 3000),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 3000),
           ),
         ]);
 
@@ -1154,15 +1150,12 @@ export class ESPLoader extends EventTarget {
           return;
         }
       } catch (e) {
-        // Sync failed or timed out
-        // Reset command lock to prevent blocking future attempts
-        this._commandLock = Promise.resolve([0, []]);
+        // Sync failed with error
+      }
 
-        if (attempt % 5 === 0) {
-          this.logger.log(
-            `Still waiting for bootloader (attempt ${attempt})...`,
-          );
-        }
+      // Log every 5 attempts to show we're still waiting
+      if (attempt % 5 === 0) {
+        this.logger.log(`Still waiting for bootloader (attempt ${attempt})...`);
       }
 
       // Wait before next attempt
@@ -1181,14 +1174,15 @@ export class ESPLoader extends EventTarget {
       this._inputBuffer.length = 0;
 
       // Use checkCommand which properly serializes commands (important for CP2102)
-      const [, data] = await this.checkCommand(ESP_SYNC, SYNC_PACKET, 0, 1000);
+      // Use a short timeout to avoid hanging forever
+      const [, data] = await this.checkCommand(ESP_SYNC, SYNC_PACKET, 0, 2000);
 
       // Check for successful sync (data should be [0, 0])
       if (data.length >= 2 && data[0] == 0 && data[1] == 0) {
         return true;
       }
     } catch (e) {
-      // Sync failed
+      // Sync failed (timeout or error)
     }
     return false;
   }
