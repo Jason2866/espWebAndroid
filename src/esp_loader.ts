@@ -2077,9 +2077,10 @@ export class ESPLoader extends EventTarget {
 
           if ((this.port as any).isWebUSB) {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
-            // WebUSB: blockSize calculated from maxTransferSize (now 128 bytes = 63 byte blocks)
-            blockSize = Math.floor((maxTransferSize - 2) / 2);
-            maxInFlight = blockSize;
+            // WebUSB: Keep maxInFlight small (63) but allow larger blockSize for better throughput
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+            maxInFlight = baseBlockSize; // Keep at 63 bytes for stable ACK timing
+            blockSize = baseBlockSize * 4; // 4x to 252 bytes for better throughput
           } else {
             // Web Serial: use esp32_flasher formula
             blockSize = Math.min(chunkSize, 0x1000);
