@@ -368,7 +368,10 @@ function formatMacAddr(macAddr) {
  * Click handler for the connect/disconnect button.
  */
 async function clickConnect() {
+  console.log('[clickConnect] Function called');
+  
   if (espStub) {
+    console.log('[clickConnect] Already connected, disconnecting...');
     // Remove disconnect event listener to prevent it from firing during manual disconnect
     if (espStub.handleDisconnect) {
       espStub.removeEventListener("disconnect", espStub.handleDisconnect);
@@ -385,11 +388,21 @@ async function clickConnect() {
     return;
   }
 
+  console.log('[clickConnect] Getting esploaderMod...');
   const esploaderMod = await window.esptoolPackage;
 
   // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
-  const isAndroid = /Android/i.test(navigator.userAgent);
+  // Check multiple indicators for Android
+  const userAgent = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const isAndroid = /Android/i.test(userAgent) || 
+                    /Linux armv/i.test(platform) ||
+                    /Linux aarch64/i.test(platform);
+  
   console.log(`[Connect] Platform: ${isAndroid ? 'Android' : 'Desktop'}`);
+  console.log(`[Connect] User-Agent: ${userAgent}`);
+  console.log(`[Connect] navigator.platform: ${platform}`);
+  console.log(`[Connect] isAndroid: ${isAndroid}`);
   
   let esploader;
   
