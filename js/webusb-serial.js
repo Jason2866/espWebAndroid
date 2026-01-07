@@ -4,6 +4,10 @@
  * 
  * This enables ESP32Tool to work on Android devices where Web Serial API
  * is not available but WebUSB is supported.
+ * 
+ * IMPORTANT: For Android/Xiaomi compatibility, this class uses smaller transfer sizes
+ * to prevent SLIP synchronization errors. The maxTransferSize is set to 64 bytes
+ * (or endpoint packetSize if smaller) to ensure SLIP frames don't get split.
  */
 class WebUSBSerial {
     constructor() {
@@ -20,11 +24,15 @@ class WebUSBSerial {
             'close': [],
             'disconnect': []
         };
-        // Transfer size optimized for WebUSB on Android
-        // IMPORTANT: Must be small enough to catch all SLIP frames
-        // With patched stub loaders, frames are still small (< 64 bytes typically)
-        // Using 64 bytes ensures we don't miss any frames
-        this.maxTransferSize = 64; // Optimal for catching all SLIP frames
+        // Transfer size optimized for WebUSB on Android/Xiaomi
+        // CRITICAL: esp32_flasher uses: blockSize = (maxTransferSize - 2) / 2
+        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
+        // This prevents SLIP frame splitting across USB packets which causes
+        // "Invalid head of packet" and "Timed out waiting for packet content" errors
+        this.maxTransferSize = 64;
+        
+        // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
+        this.isWebUSB = true;
     }
 
     /**
@@ -362,6 +370,20 @@ class WebUSBSerial {
     async disconnect() {
         await this.close();
         this.device = null;
+    }
+
+    /**
+     * Get optimal block size for flash read operations
+     * Based on esp32_flasher implementation: (maxTransferSize - 2) / 2
+     * This accounts for SLIP overhead and escape sequences
+     * @returns {number} Optimal block size in bytes
+     */
+    getOptimalReadBlockSize() {
+        // Formula from esp32_flasher for WebUSB:
+        // blockSize = (maxTransferSize - 2) / 2
+        // -2 for SLIP frame delimiters (0xC0 at start/end)
+        // /2 because worst case every byte could be escaped (0xDB 0xDC or 0xDB 0xDD)
+        return Math.floor((this.maxTransferSize - 2) / 2);
     }
 
     /**

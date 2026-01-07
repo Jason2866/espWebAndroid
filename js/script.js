@@ -575,6 +575,33 @@ async function clickConnect() {
   currentChipName = esploader.chipName;
 
   espStub = await esploader.runStub();
+  
+  // CRITICAL FIX for Android/Xiaomi WebUSB SLIP errors:
+  // Set smaller block size for WebUSB (same as esp32_flasher for mobile devices)
+  if (isAndroid && espStub && espStub.transport && espStub.transport.device) {
+    // esp32_flasher formula: blockSize = (maxTransferSize - 2) / 2
+    // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
+    const maxTransferSize = espStub.transport.device.maxTransferSize || 64;
+    const blockSize = Math.floor((maxTransferSize - 2) / 2);
+    
+    logMsg(`[Android/WebUSB] Setting flash read block size to ${blockSize} bytes (esp32_flasher mobile mode)`);
+    
+    // Patch all possible block size properties
+    if (espStub.transport.FLASH_READ_SIZE !== undefined) {
+      espStub.transport.FLASH_READ_SIZE = blockSize;
+    }
+    if (espStub.flashReadSize !== undefined) {
+      espStub.flashReadSize = blockSize;
+    }
+    if (espStub.FLASH_READ_SIZE !== undefined) {
+      espStub.FLASH_READ_SIZE = blockSize;
+    }
+    // Also try to set it on the transport itself
+    if (espStub.transport.flashReadSize !== undefined) {
+      espStub.transport.flashReadSize = blockSize;
+    }
+  }
+  
   toggleUIConnected(true);
   toggleUIToolbar(true);
   
