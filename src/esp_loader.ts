@@ -1128,35 +1128,41 @@ export class ESPLoader extends EventTarget {
   async waitForBootloaderReady(): Promise<void> {
     let attempt = 0;
 
+    this.logger.log("Attempting to sync with bootloader...");
+
     while (true) {
       // Infinite loop - wait until bootloader is ready
-      try {
-        attempt++;
+      attempt++;
 
+      try {
         // Clear input buffer before sync attempt
         this._inputBuffer.length = 0;
 
         // Try to sync with bootloader
-        const synced = await this._sync();
+        await this.sendCommand(ESP_SYNC, SYNC_PACKET);
 
-        if (synced) {
-          // Sync successful - bootloader is ready!
-          return;
-        }
-
-        // Sync failed, wait a bit and try again
-        await this.sleep(500);
-
-        // Log every 10 attempts to show we're still waiting
-        if (attempt % 10 === 0) {
-          this.logger.debug(
-            `Still waiting for bootloader (attempt ${attempt})...`,
-          );
+        // Try to get response
+        try {
+          const [, data] = await this.getResponse(ESP_SYNC, 1000); // 1 second timeout
+          if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+            // Sync successful - bootloader is ready!
+            this.logger.log(`Sync successful after ${attempt} attempts`);
+            return;
+          }
+        } catch (respErr) {
+          // No valid response, continue trying
         }
       } catch (e) {
-        // Sync error, wait and retry
-        await this.sleep(500);
+        // Sync command error, continue trying
       }
+
+      // Log every 5 attempts to show we're still waiting
+      if (attempt % 5 === 0) {
+        this.logger.log(`Still waiting for bootloader (attempt ${attempt})...`);
+      }
+
+      // Wait before next attempt
+      await this.sleep(300);
     }
   }
 
