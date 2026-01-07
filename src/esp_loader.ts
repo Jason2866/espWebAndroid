@@ -87,6 +87,7 @@ export class ESPLoader extends EventTarget {
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
+  private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
   constructor(
     public port: SerialPort,
@@ -137,6 +138,20 @@ export class ESPLoader extends EventTarget {
       this._parent._isReconfiguring = value;
     } else {
       this.__isReconfiguring = value;
+    }
+  }
+
+  private get _bootloaderActive(): boolean {
+    return this._parent
+      ? this._parent._bootloaderActive
+      : this.__bootloaderActive;
+  }
+
+  private set _bootloaderActive(value: boolean) {
+    if (this._parent) {
+      this._parent._bootloaderActive = value;
+    } else {
+      this.__bootloaderActive = value;
     }
   }
 
@@ -1071,6 +1086,12 @@ export class ESPLoader extends EventTarget {
    * Prompt user to manually enter bootloader mode and wait for bootloader message
    */
   async hardResetClassicWebUSB() {
+    // If bootloader is already active (e.g., after reconnect), skip manual reset
+    if (this._bootloaderActive) {
+      this.logger.log("Bootloader already active, skipping manual reset...");
+      return;
+    }
+
     this.logger.log("=".repeat(60));
     this.logger.log("MANUAL BOOTLOADER MODE REQUIRED");
     this.logger.log("=".repeat(60));
@@ -1092,6 +1113,9 @@ export class ESPLoader extends EventTarget {
     await this.waitForBootloaderMessage();
 
     this.logger.log("✓ Bootloader mode detected! Proceeding with sync...");
+
+    // Mark bootloader as active so we don't ask for manual reset again
+    this._bootloaderActive = true;
 
     // Clear the input buffer after detecting bootloader message
     // This removes the boot messages so they don't interfere with sync
@@ -2207,8 +2231,18 @@ export class ESPLoader extends EventTarget {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
             // CRITICAL!! WebUSB: Keep maxInFlight x * 63 for avoiding slip errors
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
-            blockSize = baseBlockSize * 32; // 32 * 63 = 2016 bytes
-            maxInFlight = baseBlockSize * 8; // 8 * 63 = 504 bytes
+            
+            // Adjust blockSize and maxInFlight based on chunk size
+            // For small reads (< 16KB), use smaller values to avoid SLIP errors
+            if (chunkSize < 16 * 1024) {
+              // Small reads: Use conservative values
+              blockSize = baseBlockSize * 8; // 8 * 63 = 504 bytes
+              maxInFlight = baseBlockSize * 2; // 2 * 63 = 126 bytes
+            } else {
+              // Large reads: Use optimized values
+              blockSize = baseBlockSize * 48; // 48 * 63 = 3024 bytes
+              maxInFlight = baseBlockSize * 12; // 12 * 63 = 756 bytes
+            }
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
             const base = 63;
