@@ -1068,33 +1068,51 @@ export class ESPLoader extends EventTarget {
   /**
    * @name hardResetClassicWebUSB
    * Classic reset sequence for WebUSB on Android
-   * Based on esptool.py ClassicReset with Windows/Android workaround
-   * The _setRTS() method automatically calls setDTR() to propagate changes
+   * Based on esp32_flasher implementation - sets BOTH signals simultaneously
+   * This is critical for WebUSB/Android compatibility
    */
   async hardResetClassicWebUSB() {
     this.logger.debug(
-      "[WebUSB Reset] Starting ClassicReset sequence for Android...",
+      "[WebUSB Reset] Starting simultaneous signal reset for Android...",
     );
 
-    // Step 1: IO0=HIGH, EN=LOW (chip in reset)
+    // Helper to set both signals at once (critical for WebUSB!)
+    const setPins = async (io0PinHigh: boolean, enPinHigh: boolean) => {
+      const io0Level = io0PinHigh ? false : true; // DTR: false=high, true=low
+      const enLevel = enPinHigh ? false : true; // RTS: false=high, true=low
+      await this.port.setSignals({
+        dataTerminalReady: io0Level,
+        requestToSend: enLevel,
+      });
+      // Update state tracking
+      this.state_DTR = io0Level;
+    };
+
+    // Step 1: Both high (idle)
+    this.logger.debug("[WebUSB Reset] Step 1: IO0=HIGH, EN=HIGH (idle)");
+    await setPins(true, true);
+
+    // Step 2: Both low
+    this.logger.debug("[WebUSB Reset] Step 2: IO0=LOW, EN=LOW");
+    await setPins(false, false);
+
+    // Step 3: IO0=HIGH, EN=LOW (chip in reset)
     this.logger.debug(
-      "[WebUSB Reset] Step 1: DTR=0 (IO0=HIGH), RTS=1 (EN=LOW, chip in reset)",
+      "[WebUSB Reset] Step 3: IO0=HIGH, EN=LOW (chip in reset)",
     );
-    await this.setDTR(false); // IO0=HIGH
-    await this.setRTS(true); // EN=LOW, chip in reset
+    await setPins(true, false);
+    await this.sleep(50);
+
+    // Step 4: IO0=LOW, EN=HIGH (chip out of reset into bootloader)
+    this.logger.debug(
+      "[WebUSB Reset] Step 4: IO0=LOW, EN=HIGH (bootloader mode)",
+    );
+    await setPins(false, true);
     await this.sleep(100);
 
-    // Step 2: IO0=LOW, EN=HIGH (chip out of reset into bootloader)
-    this.logger.debug(
-      "[WebUSB Reset] Step 2: DTR=1 (IO0=LOW), RTS=0 (EN=HIGH, chip out of reset)",
-    );
-    await this.setDTR(true); // IO0=LOW
-    await this.setRTS(false); // EN=HIGH, chip out of reset
-    await this.sleep(50); // reset_delay
-
-    // Step 3: IO0=HIGH (done)
-    this.logger.debug("[WebUSB Reset] Step 3: DTR=0 (IO0=HIGH, done)");
-    await this.setDTR(false); // IO0=HIGH, done
+    // Step 5: Both high (done)
+    this.logger.debug("[WebUSB Reset] Step 5: IO0=HIGH, EN=HIGH (done)");
+    await setPins(true, true);
 
     this.logger.debug("[WebUSB Reset] Reset sequence complete");
   }
