@@ -2055,7 +2055,23 @@ export class ESPLoader extends EventTarget {
 
           // Send read flash command for this chunk
           // This must be inside the retry loop so we send a fresh command after errors
-          const pkt = pack("<IIII", currentAddr, chunkSize, 0x1000, 1024);
+          // CRITICAL: Block size must be small for WebUSB on Android (esp32_flasher uses 31 bytes)
+          // Formula: (maxTransferSize - 2) / 2 = (64 - 2) / 2 = 31 bytes
+          // This prevents SLIP frame splitting which causes "Invalid head of packet" errors
+          
+          // Detect if using WebUSB (Android) and adjust block size accordingly
+          let blockSize = 0x1000; // Default 4096 bytes for Web Serial
+          let maxInFlight = 1024; // Default
+          
+          // Check if port has isWebUSB flag (set by WebUSBSerial class)
+          if ((this.port as any).isWebUSB) {
+            const maxTransferSize = (this.port as any).maxTransferSize || 64;
+            blockSize = Math.floor((maxTransferSize - 2) / 2); // esp32_flasher formula
+            maxInFlight = Math.min(chunkSize, blockSize * 2); // Adjust maxInFlight too
+            this.logger.debug(`[WebUSB] Using blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
+          }
+          
+          const pkt = pack("<IIII", currentAddr, chunkSize, blockSize, maxInFlight);
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
