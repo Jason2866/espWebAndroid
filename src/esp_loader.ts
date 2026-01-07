@@ -1135,35 +1135,55 @@ export class ESPLoader extends EventTarget {
       attempt++;
 
       try {
-        // Clear input buffer before sync attempt
-        this._inputBuffer.length = 0;
+        // Use Promise.race to add a timeout for the entire sync operation
+        const syncResult = await Promise.race([
+          this.attemptSync(),
+          new Promise<boolean>((_, reject) =>
+            setTimeout(() => reject(new Error("Sync timeout")), 2000),
+          ),
+        ]);
 
-        // Try to sync with bootloader
-        await this.sendCommand(ESP_SYNC, SYNC_PACKET);
-
-        // Try to get response
-        try {
-          const [, data] = await this.getResponse(ESP_SYNC, 1000); // 1 second timeout
-          if (data.length > 1 && data[0] == 0 && data[1] == 0) {
-            // Sync successful - bootloader is ready!
-            this.logger.log(`Sync successful after ${attempt} attempts`);
-            return;
-          }
-        } catch (respErr) {
-          // No valid response, continue trying
+        if (syncResult) {
+          // Sync successful - bootloader is ready!
+          this.logger.log(`✓ Sync successful after ${attempt} attempts`);
+          return;
         }
       } catch (e) {
-        // Sync command error, continue trying
-      }
-
-      // Log every 5 attempts to show we're still waiting
-      if (attempt % 5 === 0) {
-        this.logger.log(`Still waiting for bootloader (attempt ${attempt})...`);
+        // Sync failed or timed out, continue trying
+        if (attempt % 5 === 0) {
+          this.logger.log(
+            `Still waiting for bootloader (attempt ${attempt})...`,
+          );
+        }
       }
 
       // Wait before next attempt
       await this.sleep(300);
     }
+  }
+
+  /**
+   * @name attemptSync
+   * Attempt a single sync operation with the bootloader
+   * Returns true if successful, false otherwise
+   */
+  async attemptSync(): Promise<boolean> {
+    try {
+      // Clear input buffer before sync attempt
+      this._inputBuffer.length = 0;
+
+      // Try to sync with bootloader
+      await this.sendCommand(ESP_SYNC, SYNC_PACKET);
+
+      // Try to get response
+      const [, data] = await this.getResponse(ESP_SYNC, 1000); // 1 second timeout
+      if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+        return true;
+      }
+    } catch (e) {
+      // Sync failed
+    }
+    return false;
   }
 
   /**
