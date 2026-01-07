@@ -1109,7 +1109,7 @@ export class ESPLoader extends EventTarget {
    * Wait for ESP32 bootloader message
    * Detects boot mode by looking for "boot:0xX (DOWNLOAD" pattern or "download" keyword
    * This confirms the device has entered bootloader mode
-   * 
+   *
    * IMPORTANT: This method reads from _inputBuffer WITHOUT removing bytes,
    * so they remain available for subsequent sync() calls
    */
