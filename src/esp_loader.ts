@@ -2037,8 +2037,8 @@ export class ESPLoader extends EventTarget {
     if ((this.port as any).isWebUSB) {
       const maxTransferSize = (this.port as any).maxTransferSize || 64;
       // esp32_flasher formula: blockSize = (maxTransferSize - 2) / 2
-      // Multiply by 4 for better speed (31 * 4 = 124 bytes)
-      CHUNK_SIZE = Math.floor((maxTransferSize - 2) / 2) * 4; // = 124 bytes for WebUSB
+      // Multiply by 8 for better speed (31 * 8 = 248 bytes)
+      CHUNK_SIZE = Math.floor((maxTransferSize - 2) / 2) * 8; // = 248 bytes for WebUSB
       this.logger.debug(`[WebUSB] Using CHUNK_SIZE=${CHUNK_SIZE} bytes`);
     }
 
