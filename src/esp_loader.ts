@@ -1171,30 +1171,27 @@ export class ESPLoader extends EventTarget {
   async attemptSyncWithLock(): Promise<boolean> {
     try {
       this._inputBuffer.length = 0;
-      await this.sleep(100);
+      await this.sleep(50);
       this._inputBuffer.length = 0;
 
+      this.logger.debug(`Sending SYNC command...`);
       await this.sendCommand(ESP_SYNC, SYNC_PACKET);
 
       for (let i = 0; i < 8; i++) {
         try {
-          const [, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
+          const [, data] = await this.getResponse(ESP_SYNC, 500);
           if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+            this.logger.debug(`SYNC successful on attempt ${i + 1}`);
             return true;
           }
         } catch (e) {
           // Continue trying
         }
       }
+      this.logger.debug(`All 8 response attempts failed`);
     } catch (e) {
       const errorMsg = (e as Error).message;
-      if (errorMsg.includes("Invalid head of packet")) {
-        this.logger.debug(`Boot message detected, retrying...`);
-      } else if (errorMsg.includes("Timeout")) {
-        this.logger.debug(`No response from ESP32`);
-      } else {
-        this.logger.debug(`Sync error: ${errorMsg}`);
-      }
+      this.logger.debug(`Sync error: ${errorMsg}`);
     }
     return false;
   }
