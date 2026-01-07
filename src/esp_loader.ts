@@ -2075,7 +2075,7 @@ export class ESPLoader extends EventTarget {
             // CRITICAL!! WebUSB: Keep maxInFlight x * 63 for avoiding slip errors
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
             maxInFlight = baseBlockSize * 8; // 8 * 63 bytes for stable ACK timing
-            blockSize = baseBlockSize * 64; // 64 * 63 bytes for better throughput
+            blockSize = baseBlockSize * 32; // 32 * 63 bytes for better throughput
           } else {
             blockSize = Math.min(chunkSize, 0x1000);
             maxInFlight = Math.min(chunkSize, blockSize * 2);
