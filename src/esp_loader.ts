@@ -2231,7 +2231,7 @@ export class ESPLoader extends EventTarget {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
             // CRITICAL!! WebUSB: Keep maxInFlight x * 63 for avoiding slip errors
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
-            
+
             // Adjust blockSize and maxInFlight based on chunk size
             // For small reads (< 16KB), use smaller values to avoid SLIP errors
             if (chunkSize < 16 * 1024) {
