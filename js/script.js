@@ -387,21 +387,29 @@ async function clickConnect() {
 
   const esploaderMod = await window.esptoolPackage;
 
-  // ALWAYS use requestSerialPort (supports both Web Serial and WebUSB)
-  console.log('[Connect] Using requestSerialPort()');
+  // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  console.log(`[Connect] Platform: ${isAndroid ? 'Android' : 'Desktop'}`);
+  
   let esploader;
-  try {
-    const port = await requestSerialPort();
-    console.log('[Connect] Got port, using connectWithPort()');
-    esploader = await esploaderMod.connectWithPort(port, {
-      log: (...args) => logMsg(...args),
-      debug: (...args) => debugMsg(...args),
-      error: (...args) => errorMsg(...args),
-    });
-  } catch (err) {
-    // Fall back to standard connect if requestSerialPort fails
-    console.log('[Connect] requestSerialPort failed, using esploaderMod.connect()');
-    logMsg(`Port request failed (${err.message || err}), using standard connection...`);
+  
+  if (isAndroid) {
+    // Android: Use WebUSB directly
+    console.log('[Connect] Using WebUSB for Android');
+    try {
+      const port = await WebUSBSerial.requestPort();
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      logMsg(`WebUSB connection failed: ${err.message || err}`);
+      throw err;
+    }
+  } else {
+    // Desktop: Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial for Desktop');
     esploader = await esploaderMod.connect({
       log: (...args) => logMsg(...args),
       debug: (...args) => debugMsg(...args),
