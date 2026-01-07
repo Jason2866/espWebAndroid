@@ -2229,20 +2229,13 @@ export class ESPLoader extends EventTarget {
 
           if ((this.port as any).isWebUSB) {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
-            // CRITICAL!! WebUSB: Keep maxInFlight x * 63 for avoiding slip errors
-            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+            // CRITICAL!! WebUSB: Keep values as multiples of 63 for avoiding slip errors
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 63 bytes
 
-            // Adjust blockSize and maxInFlight based on chunk size
-            // For small reads (< 16KB), use smaller values to avoid SLIP errors
-            if (chunkSize < 16 * 1024) {
-              // Small reads: Use conservative values
-              blockSize = baseBlockSize * 8; // 8 * 63 = 504 bytes
-              maxInFlight = baseBlockSize * 2; // 2 * 63 = 126 bytes
-            } else {
-              // Large reads: Use optimized values
-              blockSize = baseBlockSize * 48; // 48 * 63 = 3024 bytes
-              maxInFlight = baseBlockSize * 12; // 12 * 63 = 756 bytes
-            }
+            // For WebUSB on Android with CH343, use proven working values
+            // Start conservative and can be increased if stable
+            blockSize = baseBlockSize * 1; // 1 * 63 = 63 bytes
+            maxInFlight = baseBlockSize * 1; // 1 * 63 = 63 bytes
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
             const base = 63;
@@ -2364,34 +2357,48 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(`Buffer drain error: ${drainErr}`);
               }
             } else {
-              // All retries exhausted - attempt deep recovery by reconnecting and reloading stub
+              // All retries exhausted - attempt recovery by reloading stub
+              // IMPORTANT: Do NOT close port to keep ESP32 in bootloader mode
               if (!deepRecoveryAttempted) {
                 deepRecoveryAttempted = true;
 
                 this.logger.log(
-                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting deep recovery (reconnect + reload stub)...`,
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (reload stub without closing port)...`,
                 );
 
                 try {
-                  // Reconnect will close port, reopen, and reload stub
-                  await this.reconnect();
+                  // Flush buffers
+                  this._inputBuffer.length = 0;
+                  await this.flushSerialBuffers();
+                  await sleep(200);
+
+                  // Try to sync with bootloader (should still be active)
+                  await this.sync();
+
+                  // Reload stub without closing port
+                  const stubLoader = await this.runStub(true);
+
+                  // Restore baudrate if it was changed
+                  if (this._currentBaudRate !== ESP_ROM_BAUD) {
+                    await stubLoader.setBaudrate(this._currentBaudRate);
+                  }
 
                   this.logger.log(
-                    "Deep recovery successful. Resuming read from current position...",
+                    "Recovery successful. Resuming read from current position...",
                   );
 
                   // Reset retry counter to give it another chance after recovery
                   retryCount = 0;
                   continue;
-                } catch (reconnectErr) {
+                } catch (recoveryErr) {
                   throw new Error(
-                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery failed: ${reconnectErr}`,
+                    `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and recovery failed: ${recoveryErr}`,
                   );
                 }
               } else {
-                // Deep recovery already attempted, give up
+                // Recovery already attempted, give up
                 throw new Error(
-                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and deep recovery attempt`,
+                  `Failed to read chunk at 0x${currentAddr.toString(16)} after ${MAX_RETRIES} retries and recovery attempt`,
                 );
               }
             }
