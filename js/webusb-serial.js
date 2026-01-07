@@ -409,8 +409,8 @@ class WebUSBSerial {
 
                             if (result.status === 'ok') {
                                 controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
-                                // IMPORTANT: Don't wait! Immediately try to read more data
-                                // This catches multiple small transfers from 0xC0 flush bug
+                                // Small delay for Xiaomi devices - USB stack may need time
+                                await new Promise(r => setTimeout(r, 0));
                                 continue;
                             } else if (result.status === 'stall') {
                                 await this.device.clearHalt('in', this.endpointIn);
