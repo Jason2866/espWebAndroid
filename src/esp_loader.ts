@@ -587,6 +587,30 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name hardResetUSBJTAGSerialInvertedDTRWebUSB
+   * USB-JTAG/Serial reset with inverted DTR for WebUSB (Android)
+   */
+  async hardResetUSBJTAGSerialInvertedDTRWebUSB() {
+    await this.setRTSWebUSB(false);
+    await this.setDTRWebUSB(true); // Idle (DTR inverted)
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(false); // Set IO0 (DTR inverted)
+    await this.setRTSWebUSB(false);
+    await this.sleep(100);
+
+    await this.setRTSWebUSB(true); // Reset
+    await this.setDTRWebUSB(true); // (DTR inverted)
+    await this.setRTSWebUSB(true);
+    await this.sleep(100);
+
+    await this.setDTRWebUSB(true); // (DTR inverted)
+    await this.setRTSWebUSB(false); // Chip out of reset
+
+    await this.sleep(200);
+  }
+
+  /**
    * @name hardResetClassicWebUSB
    * Classic reset for WebUSB (Android)
    */
@@ -721,42 +745,52 @@ export class ESPLoader extends EventTarget {
 
     // WebUSB (Android) uses different reset methods than Web Serial (Desktop)
     if (this.isWebUSB()) {
-      // WebUSB Strategy 1: USB-JTAG/Serial reset
+      // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
+      const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
+
+      // WebUSB Strategy 1: USB-JTAG/Serial reset (for Native USB only)
       if (isUSBJTAGSerial || isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial (WebUSB)",
           fn: async () => await this.hardResetUSBJTAGSerialWebUSB(),
         });
+        resetStrategies.push({
+          name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
+          fn: async () => await this.hardResetUSBJTAGSerialInvertedDTRWebUSB(),
+        });
+        resetStrategies.push({
+          name: "Inverted DTR Classic (WebUSB)",
+          fn: async () => await this.hardResetInvertedDTRWebUSB(),
+        });
       }
 
-      // WebUSB Strategy 2: Classic reset
+      // For USB-Serial chips, try inverted strategies first
+      if (isUSBSerialChip) {
+        // Try Inverted RTS first for CP2102/CH340
+        resetStrategies.push({
+          name: "Inverted RTS (WebUSB)",
+          fn: async () => await this.hardResetInvertedRTSWebUSB(),
+        });
+        resetStrategies.push({
+          name: "Inverted DTR (WebUSB)",
+          fn: async () => await this.hardResetInvertedDTRWebUSB(),
+        });
+        resetStrategies.push({
+          name: "Inverted Both (WebUSB)",
+          fn: async () => await this.hardResetInvertedWebUSB(),
+        });
+      }
+
+      // Classic reset (works for CH343)
       resetStrategies.push({
         name: "Classic (WebUSB)",
         fn: async () => await this.hardResetClassicWebUSB(),
       });
 
-      // WebUSB Strategy 3: UnixTight reset (sets DTR/RTS simultaneously)
+      // UnixTight reset (sets DTR/RTS simultaneously)
       resetStrategies.push({
         name: "UnixTight (WebUSB)",
         fn: async () => await this.hardResetUnixTightWebUSB(),
-      });
-
-      // WebUSB Strategy 4: Inverted both signals
-      resetStrategies.push({
-        name: "Inverted Both (WebUSB)",
-        fn: async () => await this.hardResetInvertedWebUSB(),
-      });
-
-      // WebUSB Strategy 5: Inverted DTR only
-      resetStrategies.push({
-        name: "Inverted DTR (WebUSB)",
-        fn: async () => await this.hardResetInvertedDTRWebUSB(),
-      });
-
-      // WebUSB Strategy 6: Inverted RTS only
-      resetStrategies.push({
-        name: "Inverted RTS (WebUSB)",
-        fn: async () => await this.hardResetInvertedRTSWebUSB(),
       });
 
       // WebUSB Strategy 7: Classic with long delays
