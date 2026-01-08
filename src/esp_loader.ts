@@ -791,6 +791,8 @@ export class ESPLoader extends EventTarget {
         // CH343 (VID: 0x1a86, PID: 0x55d3) - use Inverted Both first, then others
         const isCH343 =
           portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
+        // CP2102 (VID: 0x10c4) - needs standard (non-inverted) logic
+        const isCP2102 = portInfo.usbVendorId === 0x10c4;
 
         if (isCH340) {
           // CH340 only needs Inverted Both strategy
@@ -826,8 +828,53 @@ export class ESPLoader extends EventTarget {
               return await self.hardResetInvertedDTRWebUSB();
             },
           });
+        } else if (isCP2102) {
+          // CP2102: Try standard (non-inverted) strategies first
+          resetStrategies.push({
+            name: "Classic (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Classic Long Delay (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetClassicLongDelayWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Classic Short Delay (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetClassicShortDelayWebUSB();
+            },
+          });
+          // Try inverted as last resort
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB) - CP2102 fallback",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB) - CP2102 fallback",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CP2102 fallback",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
         } else {
-          // For other USB-Serial chips (CP2102, etc.), try multiple strategies
+          // For other USB-Serial chips, try multiple strategies
           resetStrategies.push({
             name: "Inverted RTS (WebUSB)",
             fn: async function () {
