@@ -405,17 +405,22 @@ class WebUSBSerial {
             const vid = this.device.vendorId;
             const pid = this.device.productId;
 
+            console.log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
+
             // Detect chip type and use appropriate control request
             // CP2102 (Silicon Labs VID: 0x10c4)
             if (vid === 0x10c4) {
+                console.log('[WebUSB] Detected CP2102 - using vendor-specific request');
                 return await this._setSignalsCP2102(signals);
             }
             // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
             else if (vid === 0x1a86 && pid !== 0x55d3) {
+                console.log('[WebUSB] Detected CH340 - using vendor-specific request');
                 return await this._setSignalsCH340(signals);
             }
             // CDC/ACM (CH343, Native USB, etc.)
             else {
+                console.log('[WebUSB] Detected CDC/ACM device - using standard request');
                 return await this._setSignalsCDC(signals);
             }
         });
