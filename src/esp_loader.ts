@@ -644,16 +644,17 @@ export class ESPLoader extends EventTarget {
   /**
    * @name hardResetClassicLongDelayWebUSB
    * Classic reset with longer delays for WebUSB (Android)
+   * Specifically for CP2102/CH340 which may need more time
    */
   async hardResetClassicLongDelayWebUSB() {
     await this.setDTRWebUSB(false); // IO0=HIGH
     await this.setRTSWebUSB(true); // EN=LOW, chip in reset
-    await this.sleep(200);
+    await this.sleep(500); // Extra long delay
     await this.setDTRWebUSB(true); // IO0=LOW
     await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset
-    await this.sleep(100);
+    await this.sleep(200);
     await this.setDTRWebUSB(false); // IO0=HIGH, done
-    await this.sleep(300);
+    await this.sleep(500); // Extra long delay
   }
 
   /**
