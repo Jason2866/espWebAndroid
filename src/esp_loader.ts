@@ -1483,13 +1483,19 @@ export class ESPLoader extends EventTarget {
    * ESP ROM bootloader, we will retry a few times
    */
   async sync() {
+    this.logger.log("[SYNC] Starting sync attempts...");
     for (let i = 0; i < 5; i++) {
+      this.logger.log(
+        `[SYNC] Attempt ${i + 1}/5, clearing input buffer (${this._inputBuffer.length} bytes)`,
+      );
       this._inputBuffer.length = 0;
       const response = await this._sync();
       if (response) {
+        this.logger.log("[SYNC] Sync successful!");
         await sleep(SYNC_TIMEOUT);
         return true;
       }
+      this.logger.log(`[SYNC] Attempt ${i + 1} failed, retrying...`);
       await sleep(SYNC_TIMEOUT);
     }
 
@@ -1502,17 +1508,35 @@ export class ESPLoader extends EventTarget {
    * any hardware resetting
    */
   async _sync() {
+    this.logger.log("[SYNC] Sending SYNC command...");
     await this.sendCommand(ESP_SYNC, SYNC_PACKET);
+    this.logger.log(
+      `[SYNC] SYNC command sent, waiting for response (input buffer: ${this._inputBuffer.length} bytes)`,
+    );
+
     for (let i = 0; i < 8; i++) {
       try {
+        this.logger.log(
+          `[SYNC] Response attempt ${i + 1}/8, buffer size: ${this._inputBuffer.length}`,
+        );
         const [, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
+        this.logger.log(
+          `[SYNC] Got response, data length: ${data.length}, data: [${data.slice(0, 10).join(", ")}${data.length > 10 ? "..." : ""}]`,
+        );
         if (data.length > 1 && data[0] == 0 && data[1] == 0) {
+          this.logger.log("[SYNC] Valid sync response received!");
           return true;
         }
-      } catch {
-        // If read packet fails.
+        this.logger.log(
+          `[SYNC] Invalid response: data[0]=${data[0]}, data[1]=${data[1]}`,
+        );
+      } catch (e) {
+        this.logger.log(
+          `[SYNC] Response attempt ${i + 1} failed: ${(e as Error).message}`,
+        );
       }
     }
+    this.logger.log("[SYNC] All response attempts failed");
     return false;
   }
 
@@ -2130,6 +2154,8 @@ export class ESPLoader extends EventTarget {
       throw new Error("Cannot write during port reconfiguration");
     }
 
+    this.logger.log(`[WRITE] Writing ${data.length} bytes to stream`);
+
     // Queue writes to prevent lock contention (critical for CP2102 on Windows)
     this._writeChain = this._writeChain
       .then(
@@ -2151,6 +2177,7 @@ export class ESPLoader extends EventTarget {
 
           // Perform the write
           await this._writer.write(new Uint8Array(data));
+          this.logger.log(`[WRITE] Write completed successfully`);
         },
         async () => {
           // Previous write failed, but still attempt this write
@@ -2164,6 +2191,7 @@ export class ESPLoader extends EventTarget {
           }
 
           await this._writer.write(new Uint8Array(data));
+          this.logger.log(`[WRITE] Write completed successfully (after retry)`);
         },
       )
       .catch((err) => {
