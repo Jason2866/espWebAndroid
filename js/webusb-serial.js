@@ -209,7 +209,7 @@ class WebUSBSerial {
                     try {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
                         if (inEp && inEp.packetSize) {
-                            this._log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
+//                            this._log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
                             // Don't limit by packetSize - use our optimized value
                         } else {
                             this._log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
@@ -448,7 +448,7 @@ class WebUSBSerial {
             const vid = this.device.vendorId;
             const pid = this.device.productId;
 
-            this._log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
+//            this._log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
 
             // Detect chip type and use appropriate control request
             // CP2102 (Silicon Labs VID: 0x10c4)

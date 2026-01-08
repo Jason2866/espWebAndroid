@@ -750,9 +750,9 @@ export class ESPLoader extends EventTarget {
     const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
     const isEspressifUSB = portInfo.usbVendorId === 0x303a;
 
-    this.logger.log(
-      `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
-    );
+    //    this.logger.log(
+    //      `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
+    //    );
 
     // Define reset strategies to try in order
     const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
@@ -2116,11 +2116,6 @@ export class ESPLoader extends EventTarget {
 
     if (this._isReconfiguring) {
       throw new Error("Cannot write during port reconfiguration");
-    }
-
-    // Only log large writes (> 100 bytes) to reduce noise
-    if (data.length > 100) {
-      this.logger.debug(`[WRITE] Writing ${data.length} bytes to stream`);
     }
 
     // Queue writes to prevent lock contention (critical for CP2102 on Windows)
