@@ -285,8 +285,19 @@ class WebUSBSerial {
                 });
                 this._log('[WebUSB CP2102] UART interface enabled');
 
-                // Step 2: Set DTR/RTS signals (vendor-specific for CP2102)
-                this._log('[WebUSB CP2102] Step 2: Setting DTR=1, RTS=1 (SET_MHS)...');
+                // Step 2: Set line control (8N1: 8 data bits, no parity, 1 stop bit)
+                this._log('[WebUSB CP2102] Step 2: Setting line control (8N1)...');
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x03, // SET_LINE_CTL
+                    value: 0x0800, // 8 data bits, no parity, 1 stop bit
+                    index: 0x00
+                });
+                this._log('[WebUSB CP2102] Line control set');
+
+                // Step 3: Set DTR/RTS signals (vendor-specific for CP2102)
+                this._log('[WebUSB CP2102] Step 3: Setting DTR=1, RTS=1 (SET_MHS)...');
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -296,9 +307,9 @@ class WebUSBSerial {
                 });
                 this._log('[WebUSB CP2102] DTR/RTS signals set');
 
-                // Step 3: Set baudrate (vendor-specific for CP2102)
+                // Step 4: Set baudrate (vendor-specific for CP2102)
                 const baudrateValue = Math.floor(0x384000 / baudRate);
-                this._log(`[WebUSB CP2102] Step 3: Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
+                this._log(`[WebUSB CP2102] Step 4: Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
