@@ -844,6 +844,13 @@ export class ESPLoader extends EventTarget {
             fn: async function () {
               self.logger.log("=== CP2102: Dual-NPN Reset ===");
 
+              // Clear any existing data in buffer before reset
+              self.logger.log(
+                `Clearing input buffer (${self._inputBuffer.length} bytes) before reset`,
+              );
+              self._inputBuffer.length = 0;
+              await self.drainInputBuffer(100);
+
               // Idle: Both HIGH
               await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
               await self.setRTSWebUSB(false);
@@ -863,6 +870,13 @@ export class ESPLoader extends EventTarget {
               // IO0 stays LOW during entire sync process
               await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
               await self.setRTSWebUSB(true);
+
+              // Clear buffer again after reset to remove boot messages
+              await self.sleep(100); // Wait for boot messages
+              self.logger.log(
+                `Clearing boot messages (${self._inputBuffer.length} bytes)`,
+              );
+              self._inputBuffer.length = 0;
 
               // NOTE: IO0 will be released AFTER successful sync in the outer try/catch
               // We don't release it here - let sync happen with IO0 still LOW
