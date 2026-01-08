@@ -784,25 +784,39 @@ export class ESPLoader extends EventTarget {
 
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
-        // Try Inverted RTS first for CP2102/CH340
-        resetStrategies.push({
-          name: "Inverted RTS (WebUSB)",
-          fn: async function () {
-            return await self.hardResetInvertedRTSWebUSB();
-          },
-        });
-        resetStrategies.push({
-          name: "Inverted DTR (WebUSB)",
-          fn: async function () {
-            return await self.hardResetInvertedDTRWebUSB();
-          },
-        });
-        resetStrategies.push({
-          name: "Inverted Both (WebUSB)",
-          fn: async function () {
-            return await self.hardResetInvertedWebUSB();
-          },
-        });
+        // CH340 (VID: 0x1a86) - use only Inverted Both strategy
+        const isCH340 =
+          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId !== 0x55d3;
+
+        if (isCH340) {
+          // CH340 only needs Inverted Both strategy
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CH340",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+        } else {
+          // For other USB-Serial chips (CP2102, etc.), try multiple strategies
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+        }
       }
 
       // Classic reset (works for CH343)
