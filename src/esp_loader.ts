@@ -834,92 +834,42 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Sequence for Dual-NPN transistor circuit (BC847BDW1T1G)
-          // Truth table: EN=LOW when (DTR=1 AND RTS=0), IO0=LOW when (DTR=0 AND RTS=1)
-          //
-          // Strategy: Keep IO0=LOW during entire sync process, only release after successful sync
+          // CP2102: Try standard reset strategies (now that UART is properly initialized)
+          // The CP2102 initialization (IFC_ENABLE, SET_LINE_CTL, SET_MHS, SET_BAUDRATE)
+          // should make standard strategies work
+
           resetStrategies.push({
-            name: "CP2102: Dual-NPN Reset",
+            name: "Classic (WebUSB) - CP2102",
             fn: async function () {
-              self.logger.log("=== CP2102: Dual-NPN Reset ===");
+              return await self.hardResetClassicWebUSB();
+            },
+          });
 
-              // Clear any existing data in buffer before reset
-              self.logger.log(
-                `Clearing input buffer (${self._inputBuffer.length} bytes) before reset`,
-              );
-              self._inputBuffer.length = 0;
-              await self.drainInputBuffer(100);
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
 
-              // Idle: Both HIGH
-              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
-              await self.setRTSWebUSB(false);
-              await self.sleep(50);
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
 
-              // Set IO0=LOW first (before reset)
-              await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
-              await self.setRTSWebUSB(true);
-              await self.sleep(50);
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
 
-              // Assert EN=LOW (enter reset) - this releases IO0 back to HIGH
-              await self.setDTRWebUSB(true); // DTR=1, RTS=0 → EN=LOW, IO0=HIGH
-              await self.setRTSWebUSB(false);
-              await self.sleep(100);
-
-              // Release EN to HIGH while simultaneously setting IO0=LOW
-              await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
-              await self.setRTSWebUSB(true);
-              await self.sleep(50); // Keep IO0 LOW briefly during boot sampling
-
-              // CRITICAL: Release IO0 to HIGH BEFORE sync attempts
-              // This allows RX to work properly
-              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
-              await self.setRTSWebUSB(false);
-              self.logger.log("IO0 released, ESP should be in bootloader");
-
-              // Wait for ESP to boot into bootloader
-              await self.sleep(100);
-
-              // Clear buffer to remove boot messages
-              self.logger.log(
-                `Clearing boot messages (${self._inputBuffer.length} bytes)`,
-              );
-              self._inputBuffer.length = 0;
-
-              // Re-initialize CP2102 UART after reset (might be needed)
-              if (
-                (self.port as any).device &&
-                (self.port as any).device.vendorId === 0x10c4
-              ) {
-                try {
-                  self.logger.log(
-                    "[CP2102] Re-initializing UART after reset...",
-                  );
-                  // Re-enable UART
-                  await (self.port as any).device.controlTransferOut({
-                    requestType: "vendor",
-                    recipient: "device",
-                    request: 0x00, // IFC_ENABLE
-                    value: 0x01,
-                    index: 0x00,
-                  });
-                  // Re-set baudrate
-                  await (self.port as any).device.controlTransferOut({
-                    requestType: "vendor",
-                    recipient: "device",
-                    request: 0x01, // SET_BAUDRATE
-                    value: 0x20, // 115200 baud
-                    index: 0x00,
-                  });
-                  self.logger.log("[CP2102] UART re-initialized");
-                } catch (e) {
-                  self.logger.log(
-                    `[CP2102] Re-init failed: ${(e as Error).message}`,
-                  );
-                }
-              }
-
-              // NOTE: IO0 will be released AFTER successful sync in the outer try/catch
-              // We don't release it here - let sync happen with IO0 still LOW
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
             },
           });
         } else {
