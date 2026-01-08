@@ -526,7 +526,7 @@ class WebUSBSerial {
                 recipient: 'device',
                 request: 0x07, // SET_MHS (Modem Handshaking)
                 value: value,
-                index: this.interfaceNumber || 0  // Use interface number, not 0!
+                index: 0x00  // CP2102 always uses index 0
             });
             
             this._log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);

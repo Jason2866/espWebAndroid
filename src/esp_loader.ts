@@ -871,12 +871,47 @@ export class ESPLoader extends EventTarget {
               await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
               await self.setRTSWebUSB(true);
 
-              // Clear buffer again after reset to remove boot messages
-              await self.sleep(100); // Wait for boot messages
+              // Wait for ESP to boot into bootloader
+              await self.sleep(100);
+
+              // Clear buffer to remove boot messages
               self.logger.log(
                 `Clearing boot messages (${self._inputBuffer.length} bytes)`,
               );
               self._inputBuffer.length = 0;
+
+              // Re-initialize CP2102 UART after reset (might be needed)
+              if (
+                (self.port as any).device &&
+                (self.port as any).device.vendorId === 0x10c4
+              ) {
+                try {
+                  self.logger.log(
+                    "[CP2102] Re-initializing UART after reset...",
+                  );
+                  // Re-enable UART
+                  await (self.port as any).device.controlTransferOut({
+                    requestType: "vendor",
+                    recipient: "device",
+                    request: 0x00, // IFC_ENABLE
+                    value: 0x01,
+                    index: 0x00,
+                  });
+                  // Re-set baudrate
+                  await (self.port as any).device.controlTransferOut({
+                    requestType: "vendor",
+                    recipient: "device",
+                    request: 0x01, // SET_BAUDRATE
+                    value: 0x20, // 115200 baud
+                    index: 0x00,
+                  });
+                  self.logger.log("[CP2102] UART re-initialized");
+                } catch (e) {
+                  self.logger.log(
+                    `[CP2102] Re-init failed: ${(e as Error).message}`,
+                  );
+                }
+              }
 
               // NOTE: IO0 will be released AFTER successful sync in the outer try/catch
               // We don't release it here - let sync happen with IO0 still LOW
