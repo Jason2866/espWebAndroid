@@ -753,6 +753,8 @@ export class ESPLoader extends EventTarget {
     const resetStrategies: Array<{ name: string; fn: () => Promise<void> }> =
       [];
 
+    const self = this;
+
     // WebUSB (Android) uses different reset methods than Web Serial (Desktop)
     if (this.isWebUSB()) {
       // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
@@ -762,22 +764,27 @@ export class ESPLoader extends EventTarget {
       if (isUSBJTAGSerial || isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial (WebUSB)",
-          fn: async () => await this.hardResetUSBJTAGSerialWebUSB(),
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerialWebUSB();
+          },
         });
         resetStrategies.push({
           name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
-          fn: async () => await this.hardResetUSBJTAGSerialInvertedDTRWebUSB(),
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+          },
         });
         resetStrategies.push({
           name: "Inverted DTR Classic (WebUSB)",
-          fn: async () => await this.hardResetInvertedDTRWebUSB(),
+          fn: async function () {
+            return await self.hardResetInvertedDTRWebUSB();
+          },
         });
       }
 
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
         // Try Inverted RTS first for CP2102/CH340
-        const self = this;
         resetStrategies.push({
           name: "Inverted RTS (WebUSB)",
           fn: async function () {
@@ -801,32 +808,42 @@ export class ESPLoader extends EventTarget {
       // Classic reset (works for CH343)
       resetStrategies.push({
         name: "Classic (WebUSB)",
-        fn: async () => await this.hardResetClassicWebUSB(),
+        fn: async function () {
+          return await self.hardResetClassicWebUSB();
+        },
       });
 
       // UnixTight reset (sets DTR/RTS simultaneously)
       resetStrategies.push({
         name: "UnixTight (WebUSB)",
-        fn: async () => await this.hardResetUnixTightWebUSB(),
+        fn: async function () {
+          return await self.hardResetUnixTightWebUSB();
+        },
       });
 
       // WebUSB Strategy 7: Classic with long delays
       resetStrategies.push({
         name: "Classic Long Delay (WebUSB)",
-        fn: async () => await this.hardResetClassicLongDelayWebUSB(),
+        fn: async function () {
+          return await self.hardResetClassicLongDelayWebUSB();
+        },
       });
 
       // WebUSB Strategy 8: Classic with short delays
       resetStrategies.push({
         name: "Classic Short Delay (WebUSB)",
-        fn: async () => await this.hardResetClassicShortDelayWebUSB(),
+        fn: async function () {
+          return await self.hardResetClassicShortDelayWebUSB();
+        },
       });
 
       // WebUSB Strategy 9: USB-JTAG/Serial fallback
       if (!isUSBJTAGSerial && !isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial fallback (WebUSB)",
-          fn: async () => await this.hardResetUSBJTAGSerialWebUSB(),
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerialWebUSB();
+          },
         });
       }
     } else {
@@ -835,21 +852,27 @@ export class ESPLoader extends EventTarget {
       if (isUSBJTAGSerial || isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial",
-          fn: async () => await this.hardResetUSBJTAGSerial(),
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerial();
+          },
         });
       }
 
       // Strategy 2: Classic reset
       resetStrategies.push({
         name: "Classic",
-        fn: async () => await this.hardResetClassic(),
+        fn: async function () {
+          return await self.hardResetClassic();
+        },
       });
 
       // Strategy 3: USB-JTAG/Serial fallback
       if (!isUSBJTAGSerial && !isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial (fallback)",
-          fn: async () => await this.hardResetUSBJTAGSerial(),
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerial();
+          },
         });
       }
     }
