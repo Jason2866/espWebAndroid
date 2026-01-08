@@ -25,14 +25,16 @@ class WebUSBSerial {
             'disconnect': []
         };
         // Transfer size optimized for WebUSB on Android/Xiaomi
-        // CRITICAL: esp32_flasher uses: blockSize = (maxTransferSize - 2) / 2
-        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
-        // This prevents SLIP frame splitting across USB packets which causes
-        // "Invalid head of packet" and "Timed out waiting for packet content" errors
-        this.maxTransferSize = 64;
+        // CRITICAL: blockSize = (maxTransferSize - 2) / 2
+        // Increased from 64 to 128 bytes for better performance
+        // With 128 bytes: blockSize = (128-2)/2 = 63 bytes per SLIP packet
+        this.maxTransferSize = 128;
         
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;
+        
+        // Command queue for serializing control transfers (critical for CP2102)
+        this._commandQueue = Promise.resolve();
     }
 
     /**
@@ -112,19 +114,6 @@ class WebUSBSerial {
                 }, lineCoding);
                 
                 console.log(`[WebUSB] Reconfigured to ${baudRate} baud`);
-                
-                // Also update DTR/RTS
-                try {
-                    await this.device.controlTransferOut({
-                        requestType: 'class',
-                        recipient: 'interface',
-                        request: 0x22, // SET_CONTROL_LINE_STATE
-                        value: 0x03, // DTR=1, RTS=1
-                        index: this.controlInterface || 0
-                    });
-                } catch (e) {
-                    console.warn('[WebUSB] Could not set control lines:', e.message);
-                }
                 
                 // Make sure streams are created
                 if (!this.readableStream || !this.writableStream) {
@@ -225,9 +214,8 @@ class WebUSBSerial {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
                         console.log(`[WebUSB] Found IN endpoint:`, inEp);
                         if (inEp && inEp.packetSize) {
-                            const oldSize = this.maxTransferSize;
-                            this.maxTransferSize = Math.min(inEp.packetSize, 64);
-                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using maxTransferSize=${this.maxTransferSize} (was ${oldSize})`);
+                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
+                            // Don't limit by packetSize - use our optimized value
                         } else {
                             console.log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
                         }
@@ -303,15 +291,17 @@ class WebUSBSerial {
             console.warn('Could not set line coding:', e.message);
         }
 
-        // Assert DTR/RTS
+        // Initialize DTR/RTS to idle state (both HIGH/asserted)
+        // This matches esp32_flasher and most USB-Serial drivers
         try {
             await this.device.controlTransferOut({
                 requestType: 'class',
                 recipient: 'interface',
                 request: 0x22, // SET_CONTROL_LINE_STATE
-                value: 0x03, // DTR=1, RTS=1
+                value: 0x03, // DTR=1, RTS=1 (both asserted)
                 index: this.controlInterface || 0
             });
+            console.log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
         } catch (e) {
             console.warn('Could not set control lines:', e.message);
         }
@@ -374,12 +364,12 @@ class WebUSBSerial {
 
     /**
      * Get optimal block size for flash read operations
-     * Based on esp32_flasher implementation: (maxTransferSize - 2) / 2
+     * (maxTransferSize - 2) / 2
      * This accounts for SLIP overhead and escape sequences
      * @returns {number} Optimal block size in bytes
      */
     getOptimalReadBlockSize() {
-        // Formula from esp32_flasher for WebUSB:
+        // Formula for WebUSB:
         // blockSize = (maxTransferSize - 2) / 2
         // -2 for SLIP frame delimiters (0xC0 at start/end)
         // /2 because worst case every byte could be escaped (0xDB 0xDC or 0xDB 0xDD)
@@ -401,37 +391,44 @@ class WebUSBSerial {
 
     /**
      * Set DTR/RTS signals (mimics port.setSignals())
+     * CRITICAL: Commands are serialized via queue for CP2102 compatibility
      */
     async setSignals(signals) {
-        if (!this.device) {
-            throw new Error('Device not open');
-        }
+        // Serialize all control transfers through a queue
+        // This is CRITICAL for CP2102 on Android - parallel commands cause hangs
+        return this._commandQueue = this._commandQueue.then(async () => {
+            if (!this.device) {
+                throw new Error('Device not open');
+            }
 
-        let value = 0;
-        value |= signals.dataTerminalReady ? 1 : 0;
-        value |= signals.requestToSend ? 2 : 0;
+            let value = 0;
+            value |= signals.dataTerminalReady ? 1 : 0;
+            value |= signals.requestToSend ? 2 : 0;
 
-        console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
+            console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
 
-        try {
-            const result = await this.device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: 0x22, // SET_CONTROL_LINE_STATE
-                value: value,
-                index: this.controlInterface || 0
-            });
-            
-            // Add delay to ensure signal is processed
-            // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
-            // Increased from 10ms to 50ms for better compatibility on Android
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            return result;
-        } catch (e) {
-            console.error(`[WebUSB] Failed to set signals: ${e.message}`);
-            throw e;
-        }
+            try {
+                const result = await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: 0x22, // SET_CONTROL_LINE_STATE
+                    value: value,
+                    index: this.controlInterface || 0
+                });
+                
+                console.log(`[WebUSB] Control transfer result: status=${result.status}, bytesWritten=${result.bytesWritten}`);
+                
+                // Add delay to ensure signal is processed
+                // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
+                // Increased from 10ms to 50ms for better compatibility on Android
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
+                return result;
+            } catch (e) {
+                console.error(`[WebUSB] Failed to set signals: ${e.message}`);
+                throw e;
+            }
+        });
     }
 
     get readable() {

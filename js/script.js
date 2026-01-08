@@ -274,31 +274,8 @@ function debugMsg(...args) {
   if (!debugMode.checked) {
     return;
   }
-  
-  function getStackTrace() {
-    let stack = new Error().stack;
-    //console.log(stack);
-    stack = stack.split("\n").map((v) => v.trim());
-    stack.shift();
-    stack.shift();
 
-    let trace = [];
-    for (let line of stack) {
-      line = line.replace("at ", "");
-      trace.push({
-        func: line.substr(0, line.indexOf("(") - 1),
-        pos: line.substring(line.indexOf(".js:") + 4, line.lastIndexOf(":")),
-      });
-    }
-
-    return trace;
-  }
-
-  let stack = getStackTrace();
-  stack.shift();
-  let top = stack.shift();
-  let prefix =
-    '<span class="debug-function">[' + top.func + ":" + top.pos + "]</span> ";
+  let prefix = "";
   for (let arg of args) {
     if (arg === undefined) {
       logMsg(prefix + "undefined");
