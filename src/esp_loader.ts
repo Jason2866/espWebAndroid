@@ -834,55 +834,48 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Test different DTR/RTS logic combinations
+          // CP2102: Only test Method 2 with different IO0-LOW durations
           resetStrategies.push({
-            name: "CP2102 Method 1: DTR=HIGH for IO0=LOW",
+            name: "CP2102: IO0 held for 150ms",
             fn: async function () {
-              self.logger.log("=== CP2102 Method 1: DTR=HIGH for IO0=LOW ===");
+              self.logger.log("=== CP2102: IO0 held for 150ms ===");
 
-              // Idle
               await self.setDTRWebUSB(false);
               await self.setRTSWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 LOW (DTR=HIGH), then reset
-              await self.setDTRWebUSB(true); // DTR=HIGH -> IO0=LOW
-              await self.setRTSWebUSB(true); // RTS=HIGH -> EN=LOW (chip in reset)
-              await self.sleep(100);
-
-              // Release reset while keeping IO0 LOW
-              await self.setRTSWebUSB(false); // RTS=LOW -> EN=HIGH (chip out of reset)
+              await self.setDTRWebUSB(false); // IO0=LOW
               await self.sleep(50);
 
-              // Release IO0
-              await self.setDTRWebUSB(false); // DTR=LOW -> IO0=HIGH
+              await self.setRTSWebUSB(true); // EN=LOW (reset)
+              await self.sleep(100);
+
+              await self.setRTSWebUSB(false); // EN=HIGH (boot)
+              await self.sleep(150); // Keep IO0 LOW
+
+              await self.setDTRWebUSB(true); // IO0=HIGH
               await self.sleep(200);
             },
           });
           resetStrategies.push({
-            name: "CP2102 Method 2: DTR=LOW for IO0=LOW",
+            name: "CP2102: IO0 held for 200ms",
             fn: async function () {
-              self.logger.log("=== CP2102 Method 2: DTR=LOW for IO0=LOW ===");
+              self.logger.log("=== CP2102: IO0 held for 200ms ===");
 
-              // Idle
               await self.setDTRWebUSB(false);
               await self.setRTSWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 LOW (DTR=LOW) BEFORE reset
-              await self.setDTRWebUSB(false); // DTR=LOW -> IO0=LOW
-              await self.sleep(50); // Wait to ensure IO0 is stable
+              await self.setDTRWebUSB(false); // IO0=LOW
+              await self.sleep(50);
 
-              // Now reset with IO0 already LOW
-              await self.setRTSWebUSB(true); // RTS=HIGH -> EN=LOW (chip in reset)
+              await self.setRTSWebUSB(true); // EN=LOW (reset)
               await self.sleep(100);
 
-              // Release reset while IO0 is still LOW
-              await self.setRTSWebUSB(false); // RTS=LOW -> EN=HIGH (chip out of reset)
-              await self.sleep(100); // LONGER delay - keep IO0 LOW while chip boots
+              await self.setRTSWebUSB(false); // EN=HIGH (boot)
+              await self.sleep(200); // Keep IO0 LOW longer
 
-              // Release IO0
-              await self.setDTRWebUSB(true); // DTR=HIGH -> IO0=HIGH
+              await self.setDTRWebUSB(true); // IO0=HIGH
               await self.sleep(200);
             },
           });
