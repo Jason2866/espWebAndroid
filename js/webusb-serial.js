@@ -294,6 +294,23 @@ class WebUSBSerial {
             console.warn('Could not set line coding:', e.message);
         }
 
+        // CP2102-specific initialization: Enable UART interface
+        if (this.device.vendorId === 0x10c4) {
+            try {
+                this._log('[WebUSB CP2102] Enabling UART interface (IFC_ENABLE)...');
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x00, // IFC_ENABLE
+                    value: 0x01,   // UART_ENABLE
+                    index: 0x00
+                });
+                this._log('[WebUSB CP2102] UART interface enabled');
+            } catch (e) {
+                console.warn('[WebUSB CP2102] Could not enable UART interface:', e.message);
+            }
+        }
+
         // Initialize DTR/RTS to idle state (both HIGH/asserted)
         // This matches esp32_flasher and most USB-Serial drivers
         try {
