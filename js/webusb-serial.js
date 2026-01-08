@@ -392,6 +392,7 @@ class WebUSBSerial {
     /**
      * Set DTR/RTS signals (mimics port.setSignals())
      * CRITICAL: Commands are serialized via queue for CP2102 compatibility
+     * Supports both CDC/ACM (CH343) and Vendor-Specific (CP2102, CH340)
      */
     async setSignals(signals) {
         // Serialize all control transfers through a queue
@@ -401,34 +402,111 @@ class WebUSBSerial {
                 throw new Error('Device not open');
             }
 
-            let value = 0;
-            value |= signals.dataTerminalReady ? 1 : 0;
-            value |= signals.requestToSend ? 2 : 0;
+            const vid = this.device.vendorId;
+            const pid = this.device.productId;
 
-            console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
-
-            try {
-                const result = await this.device.controlTransferOut({
-                    requestType: 'class',
-                    recipient: 'interface',
-                    request: 0x22, // SET_CONTROL_LINE_STATE
-                    value: value,
-                    index: this.controlInterface || 0
-                });
-                
-                console.log(`[WebUSB] Control transfer result: status=${result.status}, bytesWritten=${result.bytesWritten}`);
-                
-                // Add delay to ensure signal is processed
-                // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
-                // Increased from 10ms to 50ms for better compatibility on Android
-                await new Promise(resolve => setTimeout(resolve, 50));
-                
-                return result;
-            } catch (e) {
-                console.error(`[WebUSB] Failed to set signals: ${e.message}`);
-                throw e;
+            // Detect chip type and use appropriate control request
+            // CP2102 (Silicon Labs VID: 0x10c4)
+            if (vid === 0x10c4) {
+                return await this._setSignalsCP2102(signals);
+            }
+            // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
+            else if (vid === 0x1a86 && pid !== 0x55d3) {
+                return await this._setSignalsCH340(signals);
+            }
+            // CDC/ACM (CH343, Native USB, etc.)
+            else {
+                return await this._setSignalsCDC(signals);
             }
         });
+    }
+
+    /**
+     * Set signals using CDC/ACM standard (for CH343, Native USB)
+     */
+    async _setSignalsCDC(signals) {
+        let value = 0;
+        value |= signals.dataTerminalReady ? 1 : 0;
+        value |= signals.requestToSend ? 2 : 0;
+
+        console.log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+
+        try {
+            const result = await this.device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: 0x22, // SET_CONTROL_LINE_STATE
+                value: value,
+                index: this.controlInterface || 0
+            });
+            
+            console.log(`[WebUSB CDC] Control transfer result: status=${result.status}`);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            return result;
+        } catch (e) {
+            console.error(`[WebUSB CDC] Failed to set signals: ${e.message}`);
+            throw e;
+        }
+    }
+
+    /**
+     * Set signals for CP2102 (Silicon Labs vendor-specific)
+     */
+    async _setSignalsCP2102(signals) {
+        // CP2102 uses vendor-specific request 0x07 (SET_MHS)
+        // Bit 0: DTR, Bit 1: RTS, Bit 8-9: DTR/RTS mask
+        let value = 0;
+        value |= (signals.dataTerminalReady ? 1 : 0) | 0x100; // DTR + mask
+        value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
+
+        console.log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+
+        try {
+            const result = await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0x07, // SET_MHS (Modem Handshaking)
+                value: value,
+                index: 0
+            });
+            
+            console.log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            return result;
+        } catch (e) {
+            console.error(`[WebUSB CP2102] Failed to set signals: ${e.message}`);
+            throw e;
+        }
+    }
+
+    /**
+     * Set signals for CH340 (WCH vendor-specific)
+     */
+    async _setSignalsCH340(signals) {
+        // CH340 uses vendor-specific request 0xA4
+        // Bit 0: DTR, Bit 1: RTS (inverted logic!)
+        let value = 0;
+        value |= signals.dataTerminalReady ? 0 : 0x20; // DTR (inverted)
+        value |= signals.requestToSend ? 0 : 0x40;     // RTS (inverted)
+
+        console.log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+
+        try {
+            const result = await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0xA4, // CH340 control request
+                value: ~((signals.dataTerminalReady ? 1 << 5 : 0) | (signals.requestToSend ? 1 << 6 : 0)),
+                index: 0
+            });
+            
+            console.log(`[WebUSB CH340] Control transfer result: status=${result.status}`);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            return result;
+        } catch (e) {
+            console.error(`[WebUSB CH340] Failed to set signals: ${e.message}`);
+            throw e;
+        }
     }
 
     get readable() {
