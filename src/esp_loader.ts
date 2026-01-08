@@ -749,7 +749,6 @@ export class ESPLoader extends EventTarget {
     const portInfo = this.port.getInfo();
     const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
     const isEspressifUSB = portInfo.usbVendorId === 0x303a;
-    const isCP2102 = portInfo.usbVendorId === 0x10c4;
 
     this.logger.log(
       `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
@@ -867,9 +866,15 @@ export class ESPLoader extends EventTarget {
               await self.sleep(100);
 
               // Release EN to HIGH while simultaneously setting IO0=LOW
-              // IO0 stays LOW during entire sync process
               await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
               await self.setRTSWebUSB(true);
+              await self.sleep(50); // Keep IO0 LOW briefly during boot sampling
+
+              // CRITICAL: Release IO0 to HIGH BEFORE sync attempts
+              // This allows RX to work properly
+              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
+              await self.setRTSWebUSB(false);
+              self.logger.log("IO0 released, ESP should be in bootloader");
 
               // Wait for ESP to boot into bootloader
               await self.sleep(100);
@@ -1045,29 +1050,12 @@ export class ESPLoader extends EventTarget {
         // If we get here, sync succeeded
         this.logger.log(`Connected successfully with ${strategy.name} reset.`);
 
-        // For CP2102, release IO0 after successful sync
-        if (isCP2102 && this.isWebUSB()) {
-          this.logger.log("Releasing IO0 after successful sync...");
-          await this.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
-          await this.setRTSWebUSB(false);
-        }
-
         return;
       } catch (error) {
         lastError = error as Error;
         this.logger.log(
           `${strategy.name} reset failed: ${(error as Error).message}`,
         );
-
-        // For CP2102, release IO0 after failed sync attempt
-        if (isCP2102 && this.isWebUSB()) {
-          try {
-            await this.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
-            await this.setRTSWebUSB(false);
-          } catch (e) {
-            // Ignore errors during cleanup
-          }
-        }
 
         // If port got disconnected, we can't try more strategies
         if (!this.connected || !this.port.writable) {
