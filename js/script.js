@@ -391,7 +391,7 @@ async function clickConnect() {
     // Android: Use WebUSB directly
     console.log('[Connect] Using WebUSB for Android');
     try {
-      const port = await WebUSBSerial.requestPort();
+      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
       esploader = await esploaderMod.connectWithPort(port, {
         log: (...args) => logMsg(...args),
         debug: (...args) => debugMsg(...args),

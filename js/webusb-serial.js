@@ -10,7 +10,7 @@
  * (or endpoint packetSize if smaller) to ensure SLIP frames don't get split.
  */
 class WebUSBSerial {
-    constructor() {
+    constructor(logger = null) {
         this.device = null;
         this.interfaceNumber = null;
         this.endpointIn = null;
@@ -35,12 +35,15 @@ class WebUSBSerial {
         
         // Command queue for serializing control transfers (critical for CP2102)
         this._commandQueue = Promise.resolve();
+        
+        // Logger function (defaults to console.log if not provided)
+        this._log = logger || ((...args) => console.log(...args));
     }
 
     /**
      * Request USB device (mimics navigator.serial.requestPort())
      */
-    static async requestPort() {
+    static async requestPort(logger = null) {
         const filters = [
             { vendorId: 0x303A }, // Espressif
             { vendorId: 0x0403 }, // FTDI
@@ -50,7 +53,7 @@ class WebUSBSerial {
         ];
 
         const device = await navigator.usb.requestDevice({ filters });
-        const port = new WebUSBSerial();
+        const port = new WebUSBSerial(logger);
         port.device = device;
         return port;
     }
@@ -67,7 +70,7 @@ class WebUSBSerial {
 
         // If device is already opened, just reconfigure baudrate
         if (this.device.opened) {
-            console.log('[WebUSB] Device already open, reconfiguring baudrate...');
+            this._log('[WebUSB] Device already open, reconfiguring baudrate...');
             
             // Flush any pending data before reconfiguring
             try {
@@ -80,7 +83,7 @@ class WebUSBSerial {
                             new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10))
                         ]);
                         if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
-                            console.log(`[WebUSB] Flushed ${result.data.byteLength} bytes from input buffer`);
+                            this._log(`[WebUSB] Flushed ${result.data.byteLength} bytes from input buffer`);
                             flushCount++;
                         } else {
                             break;
@@ -113,11 +116,11 @@ class WebUSBSerial {
                     index: this.controlInterface || 0
                 }, lineCoding);
                 
-                console.log(`[WebUSB] Reconfigured to ${baudRate} baud`);
+                this._log(`[WebUSB] Reconfigured to ${baudRate} baud`);
                 
                 // Make sure streams are created
                 if (!this.readableStream || !this.writableStream) {
-                    console.log('[WebUSB] Creating streams after baudrate change...');
+                    this._log('[WebUSB] Creating streams after baudrate change...');
                     this._createStreams();
                 }
                 
@@ -130,7 +133,7 @@ class WebUSBSerial {
         }
 
         // Full open sequence for first time only
-        console.log('[WebUSB] Opening device for first time...');
+        this._log('[WebUSB] Opening device for first time...');
         
         if (this.device.opened) {
             try { await this.device.close(); } catch (e) { 
@@ -164,7 +167,7 @@ class WebUSBSerial {
                     await this.device.claimInterface(preControlIface.interfaceNumber);
                     try { await this.device.selectAlternateInterface(preControlIface.interfaceNumber, 0); } catch (e) { }
                     this.controlInterface = preControlIface.interfaceNumber;
-                    console.log(`[WebUSB] Pre-claimed CDC control iface ${preControlIface.interfaceNumber}`);
+                    this._log(`[WebUSB] Pre-claimed CDC control iface ${preControlIface.interfaceNumber}`);
                 } catch (e) {
                     console.warn(`[WebUSB] Could not pre-claim CDC control iface: ${e.message}`);
                 }
@@ -209,21 +212,21 @@ class WebUSBSerial {
                     }
 
                     // Use endpoint packet size for transfer length (Android prefers max-packet)
-                    console.log(`[WebUSB] Checking endpoint packet size...`);
+                    this._log(`[WebUSB] Checking endpoint packet size...`);
                     try {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
-                        console.log(`[WebUSB] Found IN endpoint:`, inEp);
+                        this._log(`[WebUSB] Found IN endpoint:`, inEp);
                         if (inEp && inEp.packetSize) {
-                            console.log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
+                            this._log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
                             // Don't limit by packetSize - use our optimized value
                         } else {
-                            console.log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
+                            this._log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
                         }
                     } catch (e) {
-                        console.log(`[WebUSB] Error checking packetSize:`, e);
+                        this._log(`[WebUSB] Error checking packetSize:`, e);
                     }
 
-                    console.log(`[WebUSB] Claimed iface ${cand.iface.interfaceNumber} with IN=${this.endpointIn} OUT=${this.endpointOut}`);
+                    this._log(`[WebUSB] Claimed iface ${cand.iface.interfaceNumber} with IN=${this.endpointIn} OUT=${this.endpointOut}`);
                     return config;
                 } catch (claimErr) {
                     lastErr = claimErr;
@@ -301,7 +304,7 @@ class WebUSBSerial {
                 value: 0x03, // DTR=1, RTS=1 (both asserted)
                 index: this.controlInterface || 0
             });
-            console.log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
+            this._log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
         } catch (e) {
             console.warn('Could not set control lines:', e.message);
         }
@@ -312,7 +315,7 @@ class WebUSBSerial {
         } else {
             // Streams exist, but make sure read loop is running
             if (!this._readLoopRunning) {
-                console.log('[WebUSB] Restarting read loop...');
+                this._log('[WebUSB] Restarting read loop...');
                 this._readLoopRunning = true;
                 // Note: ReadableStream can't be restarted, we need to recreate it
                 this._createStreams();
@@ -405,22 +408,22 @@ class WebUSBSerial {
             const vid = this.device.vendorId;
             const pid = this.device.productId;
 
-            console.log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
+            this._log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
 
             // Detect chip type and use appropriate control request
             // CP2102 (Silicon Labs VID: 0x10c4)
             if (vid === 0x10c4) {
-                console.log('[WebUSB] Detected CP2102 - using vendor-specific request');
+                this._log('[WebUSB] Detected CP2102 - using vendor-specific request');
                 return await this._setSignalsCP2102(signals);
             }
             // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
             else if (vid === 0x1a86 && pid !== 0x55d3) {
-                console.log('[WebUSB] Detected CH340 - using vendor-specific request');
+                this._log('[WebUSB] Detected CH340 - using vendor-specific request');
                 return await this._setSignalsCH340(signals);
             }
             // CDC/ACM (CH343, Native USB, etc.)
             else {
-                console.log('[WebUSB] Detected CDC/ACM device - using standard request');
+                this._log('[WebUSB] Detected CDC/ACM device - using standard request');
                 return await this._setSignalsCDC(signals);
             }
         }).catch(err => {
@@ -439,7 +442,7 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 1 : 0;
         value |= signals.requestToSend ? 2 : 0;
 
-        console.log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+        this._log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
@@ -450,7 +453,7 @@ class WebUSBSerial {
                 index: this.controlInterface || 0
             });
             
-            console.log(`[WebUSB CDC] Control transfer result: status=${result.status}`);
+            this._log(`[WebUSB CDC] Control transfer result: status=${result.status}`);
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
@@ -469,7 +472,7 @@ class WebUSBSerial {
         value |= (signals.dataTerminalReady ? 1 : 0) | 0x100; // DTR + mask
         value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
 
-        console.log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+        this._log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
@@ -480,7 +483,7 @@ class WebUSBSerial {
                 index: 0
             });
             
-            console.log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);
+            this._log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
@@ -499,7 +502,7 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 0 : 0x20; // DTR (inverted)
         value |= signals.requestToSend ? 0 : 0x40;     // RTS (inverted)
 
-        console.log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+        this._log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
@@ -510,7 +513,7 @@ class WebUSBSerial {
                 index: 0
             });
             
-            console.log(`[WebUSB CH340] Control transfer result: status=${result.status}`);
+            this._log(`[WebUSB CH340] Control transfer result: status=${result.status}`);
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
