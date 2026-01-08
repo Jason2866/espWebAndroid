@@ -834,7 +834,29 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Try standard (non-inverted) strategies first
+          // CP2102: Try standard (non-inverted) strategies first with special handling
+          // Based on g3gg0's findings: CP2102 needs explicit signal handling for WebUSB
+          resetStrategies.push({
+            name: "CP2102 WebUSB Special (WebUSB)",
+            fn: async function () {
+              // Special reset sequence for CP2102 on WebUSB
+              // Set both signals explicitly multiple times to ensure they're registered
+              await self.setDTRandRTSWebUSB(false, false); // Both idle
+              await self.sleep(50);
+              await self.setDTRandRTSWebUSB(false, true); // EN=LOW, IO0=HIGH, chip in reset
+              await self.sleep(100);
+              await self.setDTRandRTSWebUSB(true, false); // EN=HIGH, IO0=LOW, chip out of reset in bootloader
+              await self.sleep(50);
+              await self.setDTRandRTSWebUSB(false, false); // Both idle
+              await self.sleep(200);
+            },
+          });
+          resetStrategies.push({
+            name: "UnixTight (WebUSB) - CP2102",
+            fn: async function () {
+              return await self.hardResetUnixTightWebUSB();
+            },
+          });
           resetStrategies.push({
             name: "Classic (WebUSB) - CP2102",
             fn: async function () {
@@ -845,12 +867,6 @@ export class ESPLoader extends EventTarget {
             name: "Classic Long Delay (WebUSB) - CP2102",
             fn: async function () {
               return await self.hardResetClassicLongDelayWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "UnixTight (WebUSB) - CP2102",
-            fn: async function () {
-              return await self.hardResetUnixTightWebUSB();
             },
           });
           resetStrategies.push({
