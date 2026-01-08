@@ -836,30 +836,31 @@ export class ESPLoader extends EventTarget {
         } else if (isCP2102) {
           // CP2102: Special WebUSB sequence based on g3gg0's findings
           // https://www.g3gg0.de/programming/esp32-webserial-webusb-another-rabbit-hole/
+          // Using non-inverted logic (like CH340) since that worked
           resetStrategies.push({
-            name: "CP2102 WebUSB g3gg0 (WebUSB)",
+            name: "CP2102 WebUSB Modified (WebUSB)",
             fn: async function () {
-              // g3gg0's modified reset sequence for WebUSB
-              // Key: DTR high = IO0 low (bootloader mode)
+              // g3gg0's sequence but with non-inverted logic
+              // Standard: DTR low = IO0 low (bootloader mode)
 
               // Idle
               await self.setRTSWebUSB(false);
               await self.setDTRWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 (bootloader mode = DTR high = IO0 low)
-              await self.setDTRWebUSB(true); // DTR=true -> IO0=LOW
+              // Set IO0 low (bootloader mode)
+              await self.setDTRWebUSB(false); // DTR=false -> IO0=LOW
+              await self.setRTSWebUSB(true); // RTS=true -> EN=LOW (chip in reset)
+              await self.sleep(100);
+
+              // Chip out of reset with IO0 still low
+              await self.setDTRWebUSB(true); // DTR=true -> IO0=HIGH (after boot)
+              await self.setRTSWebUSB(false); // RTS=false -> EN=HIGH (chip out of reset)
+              // RTS set again as Windows/WebUSB workaround
               await self.setRTSWebUSB(false);
-              await self.sleep(100);
+              await self.sleep(50);
 
-              // Reset - calls inverted to go through (1,1) instead of (0,0)
-              await self.setRTSWebUSB(true);
-              await self.setDTRWebUSB(false); // !bootloader
-              // RTS set again as Windows/WebUSB only propagates DTR on RTS setting
-              await self.setRTSWebUSB(true);
-              await self.sleep(100);
-
-              // Chip out of reset
+              // Final state
               await self.setDTRWebUSB(false);
               await self.setRTSWebUSB(false);
               await self.sleep(200);
