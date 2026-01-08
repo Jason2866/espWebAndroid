@@ -894,48 +894,53 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Classic reset (for chips not handled above)
-      if (portInfo.usbVendorId !== 0x1a86) {
+      // Add general fallback strategies only for non-CP2102 chips
+      const isCP2102 = portInfo.usbVendorId === 0x10c4;
+
+      if (!isCP2102) {
+        // Classic reset (for chips not handled above)
+        if (portInfo.usbVendorId !== 0x1a86) {
+          resetStrategies.push({
+            name: "Classic (WebUSB)",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+        }
+
+        // UnixTight reset (sets DTR/RTS simultaneously)
         resetStrategies.push({
-          name: "Classic (WebUSB)",
+          name: "UnixTight (WebUSB)",
           fn: async function () {
-            return await self.hardResetClassicWebUSB();
+            return await self.hardResetUnixTightWebUSB();
           },
         });
-      }
 
-      // UnixTight reset (sets DTR/RTS simultaneously)
-      resetStrategies.push({
-        name: "UnixTight (WebUSB)",
-        fn: async function () {
-          return await self.hardResetUnixTightWebUSB();
-        },
-      });
-
-      // WebUSB Strategy 7: Classic with long delays
-      resetStrategies.push({
-        name: "Classic Long Delay (WebUSB)",
-        fn: async function () {
-          return await self.hardResetClassicLongDelayWebUSB();
-        },
-      });
-
-      // WebUSB Strategy 8: Classic with short delays
-      resetStrategies.push({
-        name: "Classic Short Delay (WebUSB)",
-        fn: async function () {
-          return await self.hardResetClassicShortDelayWebUSB();
-        },
-      });
-
-      // WebUSB Strategy 9: USB-JTAG/Serial fallback
-      if (!isUSBJTAGSerial && !isEspressifUSB) {
+        // WebUSB Strategy 7: Classic with long delays
         resetStrategies.push({
-          name: "USB-JTAG/Serial fallback (WebUSB)",
+          name: "Classic Long Delay (WebUSB)",
           fn: async function () {
-            return await self.hardResetUSBJTAGSerialWebUSB();
+            return await self.hardResetClassicLongDelayWebUSB();
           },
         });
+
+        // WebUSB Strategy 8: Classic with short delays
+        resetStrategies.push({
+          name: "Classic Short Delay (WebUSB)",
+          fn: async function () {
+            return await self.hardResetClassicShortDelayWebUSB();
+          },
+        });
+
+        // WebUSB Strategy 9: USB-JTAG/Serial fallback
+        if (!isUSBJTAGSerial && !isEspressifUSB) {
+          resetStrategies.push({
+            name: "USB-JTAG/Serial fallback (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+        }
       }
     } else {
       // Web Serial (Desktop) strategies
