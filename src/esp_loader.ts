@@ -834,14 +834,12 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Only try the most promising strategies
-          // LED goes dark = reset is working, need to find which one enters bootloader
+          // CP2102: Only the 2 most promising strategies
           resetStrategies.push({
-            name: "CP2102 WebUSB Modified (WebUSB)",
+            name: "CP2102 Method 1: WebUSB Modified",
             fn: async function () {
-              self.logger.log("=== Trying CP2102 WebUSB Modified ===");
-              // g3gg0's sequence but with non-inverted logic
-              // Standard: DTR low = IO0 low (bootloader mode)
+              self.logger.log("=== CP2102 Method 1: WebUSB Modified ===");
+              // g3gg0's sequence with non-inverted logic
 
               // Idle
               await self.setRTSWebUSB(false);
@@ -867,24 +865,10 @@ export class ESPLoader extends EventTarget {
             },
           });
           resetStrategies.push({
-            name: "Classic (WebUSB) - CP2102",
+            name: "CP2102 Method 2: Classic",
             fn: async function () {
-              self.logger.log("=== Trying Classic CP2102 ===");
+              self.logger.log("=== CP2102 Method 2: Classic ===");
               return await self.hardResetClassicWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "UnixTight (WebUSB) - CP2102",
-            fn: async function () {
-              self.logger.log("=== Trying UnixTight CP2102 ===");
-              return await self.hardResetUnixTightWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "Classic Long Delay (WebUSB) - CP2102",
-            fn: async function () {
-              self.logger.log("=== Trying Classic Long Delay CP2102 ===");
-              return await self.hardResetClassicLongDelayWebUSB();
             },
           });
         } else {
