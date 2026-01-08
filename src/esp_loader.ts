@@ -834,12 +834,12 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Special WebUSB sequence based on g3gg0's findings
-          // https://www.g3gg0.de/programming/esp32-webserial-webusb-another-rabbit-hole/
-          // Using non-inverted logic (like CH340) since that worked
+          // CP2102: Only try the most promising strategies
+          // LED goes dark = reset is working, need to find which one enters bootloader
           resetStrategies.push({
             name: "CP2102 WebUSB Modified (WebUSB)",
             fn: async function () {
+              self.logger.log("=== Trying CP2102 WebUSB Modified ===");
               // g3gg0's sequence but with non-inverted logic
               // Standard: DTR low = IO0 low (bootloader mode)
 
@@ -867,46 +867,24 @@ export class ESPLoader extends EventTarget {
             },
           });
           resetStrategies.push({
-            name: "UnixTight (WebUSB) - CP2102",
+            name: "Classic (WebUSB) - CP2102",
             fn: async function () {
-              return await self.hardResetUnixTightWebUSB();
+              self.logger.log("=== Trying Classic CP2102 ===");
+              return await self.hardResetClassicWebUSB();
             },
           });
           resetStrategies.push({
-            name: "Classic (WebUSB) - CP2102",
+            name: "UnixTight (WebUSB) - CP2102",
             fn: async function () {
-              return await self.hardResetClassicWebUSB();
+              self.logger.log("=== Trying UnixTight CP2102 ===");
+              return await self.hardResetUnixTightWebUSB();
             },
           });
           resetStrategies.push({
             name: "Classic Long Delay (WebUSB) - CP2102",
             fn: async function () {
+              self.logger.log("=== Trying Classic Long Delay CP2102 ===");
               return await self.hardResetClassicLongDelayWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "Classic Short Delay (WebUSB) - CP2102",
-            fn: async function () {
-              return await self.hardResetClassicShortDelayWebUSB();
-            },
-          });
-          // Try inverted as last resort
-          resetStrategies.push({
-            name: "Inverted RTS (WebUSB) - CP2102 fallback",
-            fn: async function () {
-              return await self.hardResetInvertedRTSWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "Inverted DTR (WebUSB) - CP2102 fallback",
-            fn: async function () {
-              return await self.hardResetInvertedDTRWebUSB();
-            },
-          });
-          resetStrategies.push({
-            name: "Inverted Both (WebUSB) - CP2102 fallback",
-            fn: async function () {
-              return await self.hardResetInvertedWebUSB();
             },
           });
         } else {
