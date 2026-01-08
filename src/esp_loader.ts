@@ -749,6 +749,7 @@ export class ESPLoader extends EventTarget {
     const portInfo = this.port.getInfo();
     const isUSBJTAGSerial = portInfo.usbProductId === USB_JTAG_SERIAL_PID;
     const isEspressifUSB = portInfo.usbVendorId === 0x303a;
+    const isCP2102 = portInfo.usbVendorId === 0x10c4;
 
     this.logger.log(
       `Detected USB: VID=0x${portInfo.usbVendorId?.toString(16) || "unknown"}, PID=0x${portInfo.usbProductId?.toString(16) || "unknown"}`,
@@ -837,8 +838,7 @@ export class ESPLoader extends EventTarget {
           // CP2102: Sequence for Dual-NPN transistor circuit (BC847BDW1T1G)
           // Truth table: EN=LOW when (DTR=1 AND RTS=0), IO0=LOW when (DTR=0 AND RTS=1)
           //
-          // Key: ESP samples IO0 on the RISING edge of EN (LOW→HIGH transition)
-          // So IO0 must be LOW when we release EN from reset
+          // Strategy: Keep IO0=LOW during entire sync process, only release after successful sync
           resetStrategies.push({
             name: "CP2102: Dual-NPN Reset",
             fn: async function () {
@@ -860,15 +860,12 @@ export class ESPLoader extends EventTarget {
               await self.sleep(100);
 
               // Release EN to HIGH while simultaneously setting IO0=LOW
-              // This is the critical moment - IO0 must be LOW when EN rises
+              // IO0 stays LOW during entire sync process
               await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
               await self.setRTSWebUSB(true);
-              await self.sleep(200); // Keep IO0 LOW during boot sampling period
 
-              // Release IO0 to HIGH
-              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
-              await self.setRTSWebUSB(false);
-              await self.sleep(200);
+              // NOTE: IO0 will be released AFTER successful sync in the outer try/catch
+              // We don't release it here - let sync happen with IO0 still LOW
             },
           });
         } else {
@@ -998,12 +995,30 @@ export class ESPLoader extends EventTarget {
 
         // If we get here, sync succeeded
         this.logger.log(`Connected successfully with ${strategy.name} reset.`);
+
+        // For CP2102, release IO0 after successful sync
+        if (isCP2102 && this.isWebUSB()) {
+          this.logger.log("Releasing IO0 after successful sync...");
+          await this.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
+          await this.setRTSWebUSB(false);
+        }
+
         return;
       } catch (error) {
         lastError = error as Error;
         this.logger.log(
           `${strategy.name} reset failed: ${(error as Error).message}`,
         );
+
+        // For CP2102, release IO0 after failed sync attempt
+        if (isCP2102 && this.isWebUSB()) {
+          try {
+            await this.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
+            await this.setRTSWebUSB(false);
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
+        }
 
         // If port got disconnected, we can't try more strategies
         if (!this.connected || !this.port.writable) {
