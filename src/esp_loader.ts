@@ -834,38 +834,53 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Only the 2 most promising strategies
+          // CP2102: Test different DTR/RTS logic combinations
           resetStrategies.push({
-            name: "CP2102 Method 1: WebUSB Modified",
+            name: "CP2102 Method 1: DTR=HIGH for IO0=LOW",
             fn: async function () {
-              self.logger.log("=== CP2102 Method 1: WebUSB Modified ===");
-              // g3gg0's sequence with non-inverted logic
+              self.logger.log("=== CP2102 Method 1: DTR=HIGH for IO0=LOW ===");
 
               // Idle
-              await self.setRTSWebUSB(false);
               await self.setDTRWebUSB(false);
+              await self.setRTSWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 LOW first, then reset
-              await self.setDTRWebUSB(true); // DTR=true -> IO0=LOW
-              await self.sleep(10); // Small delay to ensure IO0 is stable
-              await self.setRTSWebUSB(true); // RTS=true -> EN=LOW (chip in reset)
+              // Set IO0 LOW (DTR=HIGH), then reset
+              await self.setDTRWebUSB(true); // DTR=HIGH -> IO0=LOW
+              await self.setRTSWebUSB(true); // RTS=HIGH -> EN=LOW (chip in reset)
               await self.sleep(100);
 
               // Release reset while keeping IO0 LOW
-              await self.setRTSWebUSB(false); // RTS=false -> EN=HIGH (chip out of reset)
-              await self.sleep(50); // Keep IO0 LOW for a bit after reset
+              await self.setRTSWebUSB(false); // RTS=LOW -> EN=HIGH (chip out of reset)
+              await self.sleep(50);
 
-              // Now release IO0
-              await self.setDTRWebUSB(false); // DTR=false -> IO0=HIGH
+              // Release IO0
+              await self.setDTRWebUSB(false); // DTR=LOW -> IO0=HIGH
               await self.sleep(200);
             },
           });
           resetStrategies.push({
-            name: "CP2102 Method 2: Classic",
+            name: "CP2102 Method 2: DTR=LOW for IO0=LOW",
             fn: async function () {
-              self.logger.log("=== CP2102 Method 2: Classic ===");
-              return await self.hardResetClassicWebUSB();
+              self.logger.log("=== CP2102 Method 2: DTR=LOW for IO0=LOW ===");
+
+              // Idle
+              await self.setDTRWebUSB(false);
+              await self.setRTSWebUSB(false);
+              await self.sleep(100);
+
+              // Set IO0 LOW (DTR=LOW), then reset
+              await self.setDTRWebUSB(false); // DTR=LOW -> IO0=LOW
+              await self.setRTSWebUSB(true); // RTS=HIGH -> EN=LOW (chip in reset)
+              await self.sleep(100);
+
+              // Release reset while keeping IO0 LOW
+              await self.setRTSWebUSB(false); // RTS=LOW -> EN=HIGH (chip out of reset)
+              await self.sleep(50);
+
+              // Release IO0
+              await self.setDTRWebUSB(true); // DTR=HIGH -> IO0=HIGH
+              await self.sleep(200);
             },
           });
         } else {
