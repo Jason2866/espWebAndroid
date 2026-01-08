@@ -546,12 +546,16 @@ export class ESPLoader extends EventTarget {
   // ============================================================================
 
   async setRTSWebUSB(state: boolean) {
-    console.log(`[ESP_LOADER] setRTSWebUSB called: ${state}`);
+    console.log(
+      `[ESP_LOADER] setRTSWebUSB called: ${state}, port type: ${this.port?.constructor?.name}, has setSignals: ${typeof (this.port as any)?.setSignals}`,
+    );
     await (this.port as any).setSignals({ requestToSend: state });
   }
 
   async setDTRWebUSB(state: boolean) {
-    console.log(`[ESP_LOADER] setDTRWebUSB called: ${state}`);
+    console.log(
+      `[ESP_LOADER] setDTRWebUSB called: ${state}, port type: ${this.port?.constructor?.name}, has setSignals: ${typeof (this.port as any)?.setSignals}`,
+    );
     this.state_DTR = state;
     await (this.port as any).setSignals({ dataTerminalReady: state });
   }

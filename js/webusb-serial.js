@@ -397,7 +397,7 @@ class WebUSBSerial {
     async setSignals(signals) {
         // Serialize all control transfers through a queue
         // This is CRITICAL for CP2102 on Android - parallel commands cause hangs
-        return this._commandQueue = this._commandQueue.then(async () => {
+        this._commandQueue = this._commandQueue.then(async () => {
             if (!this.device) {
                 throw new Error('Device not open');
             }
@@ -423,7 +423,12 @@ class WebUSBSerial {
                 console.log('[WebUSB] Detected CDC/ACM device - using standard request');
                 return await this._setSignalsCDC(signals);
             }
+        }).catch(err => {
+            console.error('[WebUSB] setSignals error:', err);
+            throw err;
         });
+        
+        return this._commandQueue;
     }
 
     /**
