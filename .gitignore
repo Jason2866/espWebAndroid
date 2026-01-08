@@ -1,6 +1,5 @@
 .vscode
 *.DS_Store
 node_modules
-js/modules
 dist
 out
