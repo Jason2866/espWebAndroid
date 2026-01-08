@@ -869,14 +869,17 @@ export class ESPLoader extends EventTarget {
               await self.setRTSWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 LOW (DTR=LOW), then reset
+              // Set IO0 LOW (DTR=LOW) BEFORE reset
               await self.setDTRWebUSB(false); // DTR=LOW -> IO0=LOW
+              await self.sleep(50); // Wait to ensure IO0 is stable
+
+              // Now reset with IO0 already LOW
               await self.setRTSWebUSB(true); // RTS=HIGH -> EN=LOW (chip in reset)
               await self.sleep(100);
 
-              // Release reset while keeping IO0 LOW
+              // Release reset while IO0 is still LOW
               await self.setRTSWebUSB(false); // RTS=LOW -> EN=HIGH (chip out of reset)
-              await self.sleep(50);
+              await self.sleep(100); // LONGER delay - keep IO0 LOW while chip boots
 
               // Release IO0
               await self.setDTRWebUSB(true); // DTR=HIGH -> IO0=HIGH
