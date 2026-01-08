@@ -5194,17 +5194,44 @@ class ESPLoader extends EventTarget {
     }
     /**
      * @name hardResetInvertedWebUSB
-     * Inverted reset sequence for WebUSB (Android) - some adapters invert signals
+     * Inverted reset sequence for WebUSB (Android) - both signals inverted
      */
     async hardResetInvertedWebUSB() {
-        await this.setDTRWebUSB(true); // IO0=LOW
-        await this.setRTSWebUSB(false); // EN=HIGH
+        await this.setDTRWebUSB(true); // IO0=HIGH (inverted)
+        await this.setRTSWebUSB(false); // EN=LOW, chip in reset (inverted)
         await this.sleep(100);
-        await this.setDTRWebUSB(false); // IO0=HIGH
-        await this.setRTSWebUSB(true); // EN=LOW, chip in reset
+        await this.setDTRWebUSB(false); // IO0=LOW (inverted)
+        await this.setRTSWebUSB(true); // EN=HIGH, chip out of reset (inverted)
         await this.sleep(50);
-        await this.setDTRWebUSB(true); // IO0=LOW
-        await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset
+        await this.setDTRWebUSB(true); // IO0=HIGH, done (inverted)
+        await this.sleep(200);
+    }
+    /**
+     * @name hardResetInvertedDTRWebUSB
+     * Only DTR inverted for WebUSB (Android)
+     */
+    async hardResetInvertedDTRWebUSB() {
+        await this.setDTRWebUSB(true); // IO0=HIGH (DTR inverted)
+        await this.setRTSWebUSB(true); // EN=LOW, chip in reset (RTS normal)
+        await this.sleep(100);
+        await this.setDTRWebUSB(false); // IO0=LOW (DTR inverted)
+        await this.setRTSWebUSB(false); // EN=HIGH, chip out of reset (RTS normal)
+        await this.sleep(50);
+        await this.setDTRWebUSB(true); // IO0=HIGH, done (DTR inverted)
+        await this.sleep(200);
+    }
+    /**
+     * @name hardResetInvertedRTSWebUSB
+     * Only RTS inverted for WebUSB (Android)
+     */
+    async hardResetInvertedRTSWebUSB() {
+        await this.setDTRWebUSB(false); // IO0=HIGH (DTR normal)
+        await this.setRTSWebUSB(false); // EN=LOW, chip in reset (RTS inverted)
+        await this.sleep(100);
+        await this.setDTRWebUSB(true); // IO0=LOW (DTR normal)
+        await this.setRTSWebUSB(true); // EN=HIGH, chip out of reset (RTS inverted)
+        await this.sleep(50);
+        await this.setDTRWebUSB(false); // IO0=HIGH, done (DTR normal)
         await this.sleep(200);
     }
     /**
@@ -5247,22 +5274,32 @@ class ESPLoader extends EventTarget {
                 name: "UnixTight (WebUSB)",
                 fn: async () => await this.hardResetUnixTightWebUSB(),
             });
-            // WebUSB Strategy 4: Classic with long delays
+            // WebUSB Strategy 4: Inverted both signals
+            resetStrategies.push({
+                name: "Inverted Both (WebUSB)",
+                fn: async () => await this.hardResetInvertedWebUSB(),
+            });
+            // WebUSB Strategy 5: Inverted DTR only
+            resetStrategies.push({
+                name: "Inverted DTR (WebUSB)",
+                fn: async () => await this.hardResetInvertedDTRWebUSB(),
+            });
+            // WebUSB Strategy 6: Inverted RTS only
+            resetStrategies.push({
+                name: "Inverted RTS (WebUSB)",
+                fn: async () => await this.hardResetInvertedRTSWebUSB(),
+            });
+            // WebUSB Strategy 7: Classic with long delays
             resetStrategies.push({
                 name: "Classic Long Delay (WebUSB)",
                 fn: async () => await this.hardResetClassicLongDelayWebUSB(),
             });
-            // WebUSB Strategy 5: Classic with short delays
+            // WebUSB Strategy 8: Classic with short delays
             resetStrategies.push({
                 name: "Classic Short Delay (WebUSB)",
                 fn: async () => await this.hardResetClassicShortDelayWebUSB(),
             });
-            // WebUSB Strategy 6: Inverted sequence
-            resetStrategies.push({
-                name: "Inverted (WebUSB)",
-                fn: async () => await this.hardResetInvertedWebUSB(),
-            });
-            // WebUSB Strategy 7: USB-JTAG/Serial fallback
+            // WebUSB Strategy 9: USB-JTAG/Serial fallback
             if (!isUSBJTAGSerial && !isEspressifUSB) {
                 resetStrategies.push({
                     name: "USB-JTAG/Serial fallback (WebUSB)",

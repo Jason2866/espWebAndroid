@@ -291,42 +291,17 @@ class WebUSBSerial {
             console.warn('Could not set line coding:', e.message);
         }
 
-        // Initialize DTR/RTS based on chip type
-        // Different USB-Serial chips need different initial states
-        const vid = this.device.vendorId;
-        const pid = this.device.productId;
-        let initialValue = 0x00; // Default: DTR=0, RTS=0
-        
-        // CH343 (VID: 0x1a86, PID: 0x55d3) works with DTR=0, RTS=0
-        if (vid === 0x1a86 && pid === 0x55d3) {
-            initialValue = 0x00; // DTR=0, RTS=0
-            console.log('[WebUSB] CH343 detected - using DTR=0, RTS=0');
-        }
-        // CP2102 (VID: 0x10c4) needs DTR=1, RTS=1
-        else if (vid === 0x10c4) {
-            initialValue = 0x03; // DTR=1, RTS=1
-            console.log('[WebUSB] CP210x detected - using DTR=1, RTS=1');
-        }
-        // CH340 (VID: 0x1a86, other PIDs) needs DTR=1, RTS=1
-        else if (vid === 0x1a86) {
-            initialValue = 0x03; // DTR=1, RTS=1
-            console.log('[WebUSB] CH340 detected - using DTR=1, RTS=1');
-        }
-        // Default for other chips
-        else {
-            initialValue = 0x03; // DTR=1, RTS=1 (safer default)
-            console.log('[WebUSB] Unknown chip - using DTR=1, RTS=1');
-        }
-
+        // Initialize DTR/RTS to idle state (both HIGH/asserted)
+        // This matches esp32_flasher and most USB-Serial drivers
         try {
             await this.device.controlTransferOut({
                 requestType: 'class',
                 recipient: 'interface',
                 request: 0x22, // SET_CONTROL_LINE_STATE
-                value: initialValue,
+                value: 0x03, // DTR=1, RTS=1 (both asserted)
                 index: this.controlInterface || 0
             });
-            console.log(`[WebUSB] Initialized with value=0x${initialValue.toString(16)}`);
+            console.log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
         } catch (e) {
             console.warn('Could not set control lines:', e.message);
         }
