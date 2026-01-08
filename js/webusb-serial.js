@@ -271,33 +271,11 @@ class WebUSBSerial {
             }
         }
 
-        // Set line coding (baudRate already declared at function start)
-        try {
-            const lineCoding = new Uint8Array([
-                baudRate & 0xFF,
-                (baudRate >> 8) & 0xFF,
-                (baudRate >> 16) & 0xFF,
-                (baudRate >> 24) & 0xFF,
-                0x00, // 1 stop bit
-                0x00, // No parity
-                0x08  // 8 data bits
-            ]);
-
-            await this.device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: 0x20, // SET_LINE_CODING
-                value: 0,
-                index: this.controlInterface || 0
-            }, lineCoding);
-        } catch (e) {
-            console.warn('Could not set line coding:', e.message);
-        }
-
-        // CP2102-specific initialization: Enable UART interface
+        // CP2102-specific initialization sequence (must be in this exact order!)
         if (this.device.vendorId === 0x10c4) {
             try {
-                this._log('[WebUSB CP2102] Enabling UART interface (IFC_ENABLE)...');
+                // Step 1: Enable UART interface
+                this._log('[WebUSB CP2102] Step 1: Enabling UART interface (IFC_ENABLE)...');
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -306,27 +284,70 @@ class WebUSBSerial {
                     index: 0x00
                 });
                 this._log('[WebUSB CP2102] UART interface enabled');
+
+                // Step 2: Set DTR/RTS signals (vendor-specific for CP2102)
+                this._log('[WebUSB CP2102] Step 2: Setting DTR=1, RTS=1 (SET_MHS)...');
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x07, // SET_MHS
+                    value: 0x03 | 0x0100 | 0x0200, // DTR=1, RTS=1 with masks
+                    index: 0x00
+                });
+                this._log('[WebUSB CP2102] DTR/RTS signals set');
+
+                // Step 3: Set baudrate (vendor-specific for CP2102)
+                const baudrateValue = Math.floor(0x384000 / baudRate);
+                this._log(`[WebUSB CP2102] Step 3: Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x01, // SET_BAUDRATE
+                    value: baudrateValue,
+                    index: 0x00
+                });
+                this._log('[WebUSB CP2102] Baudrate set successfully');
             } catch (e) {
-                console.warn('[WebUSB CP2102] Could not enable UART interface:', e.message);
+                console.warn('[WebUSB CP2102] Initialization error:', e.message);
             }
-        }
+        } else {
+            // Standard CDC/ACM initialization for other chips
+            try {
+                const lineCoding = new Uint8Array([
+                    baudRate & 0xFF,
+                    (baudRate >> 8) & 0xFF,
+                    (baudRate >> 16) & 0xFF,
+                    (baudRate >> 24) & 0xFF,
+                    0x00, // 1 stop bit
+                    0x00, // No parity
+                    0x08  // 8 data bits
+                ]);
 
-        // Initialize DTR/RTS to idle state (both HIGH/asserted)
-        // This matches esp32_flasher and most USB-Serial drivers
-        try {
-            await this.device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: 0x22, // SET_CONTROL_LINE_STATE
-                value: 0x03, // DTR=1, RTS=1 (both asserted)
-                index: this.controlInterface || 0
-            });
-            this._log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
-        } catch (e) {
-            console.warn('Could not set control lines:', e.message);
-        }
+                await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: 0x20, // SET_LINE_CODING
+                    value: 0,
+                    index: this.controlInterface || 0
+                }, lineCoding);
+            } catch (e) {
+                console.warn('Could not set line coding:', e.message);
+            }
 
-        // Create streams only if they don't exist yet
+            // Initialize DTR/RTS to idle state (both HIGH/asserted)
+            try {
+                await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: 0x22, // SET_CONTROL_LINE_STATE
+                    value: 0x03, // DTR=1, RTS=1 (both asserted)
+                    index: this.controlInterface || 0
+                });
+                this._log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
+            } catch (e) {
+                console.warn('Could not set control lines:', e.message);
+            }
+        }        // Create streams only if they don't exist yet
         if (!this.readableStream || !this.writableStream) {
             this._createStreams();
         } else {
