@@ -978,7 +978,7 @@ export class ESPLoader extends EventTarget {
     // Try each reset strategy with timeout
     for (const strategy of resetStrategies) {
       try {
-        this.logger.log(`Trying ${strategy.name} reset...`);
+        //        this.logger.log(`Trying ${strategy.name} reset...`);
 
         // Check if port is still open, if not, skip this strategy
         if (!this.connected || !this.port.writable) {
@@ -1494,12 +1494,9 @@ export class ESPLoader extends EventTarget {
       try {
         const [, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
         if (data.length > 1 && data[0] == 0 && data[1] == 0) {
-          this.logger.log("[SYNC] Sync successful");
           return true;
         }
-      } catch (e) {
-        // Silent retry
-      }
+      } catch (e) {}
     }
     return false;
   }

@@ -453,17 +453,17 @@ class WebUSBSerial {
             // Detect chip type and use appropriate control request
             // CP2102 (Silicon Labs VID: 0x10c4)
             if (vid === 0x10c4) {
-                this._log('[WebUSB] Detected CP2102 - using vendor-specific request');
+//                this._log('[WebUSB] Detected CP2102 - using vendor-specific request');
                 return await this._setSignalsCP2102(signals);
             }
             // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
             else if (vid === 0x1a86 && pid !== 0x55d3) {
-                this._log('[WebUSB] Detected CH340 - using vendor-specific request');
+//                this._log('[WebUSB] Detected CH340 - using vendor-specific request');
                 return await this._setSignalsCH340(signals);
             }
             // CDC/ACM (CH343, Native USB, etc.)
             else {
-                this._log('[WebUSB] Detected CDC/ACM device - using standard request');
+//                this._log('[WebUSB] Detected CDC/ACM device - using standard request');
                 return await this._setSignalsCDC(signals);
             }
         }).catch(err => {
