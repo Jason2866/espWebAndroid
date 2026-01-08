@@ -834,48 +834,40 @@ export class ESPLoader extends EventTarget {
             },
           });
         } else if (isCP2102) {
-          // CP2102: Only test Method 2 with different IO0-LOW durations
+          // CP2102: Sequence for Dual-NPN transistor circuit (BC847BDW1T1G)
+          // Truth table: EN=LOW when (DTR=1 AND RTS=0), IO0=LOW when (DTR=0 AND RTS=1)
+          //
+          // Key: ESP samples IO0 on the RISING edge of EN (LOW→HIGH transition)
+          // So IO0 must be LOW when we release EN from reset
           resetStrategies.push({
-            name: "CP2102: IO0 held for 150ms",
+            name: "CP2102: Dual-NPN Reset",
             fn: async function () {
-              self.logger.log("=== CP2102: IO0 held for 150ms ===");
+              self.logger.log("=== CP2102: Dual-NPN Reset ===");
 
-              await self.setDTRWebUSB(false);
+              // Idle: Both HIGH
+              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
+              await self.setRTSWebUSB(false);
+              await self.sleep(50);
+
+              // Set IO0=LOW first (before reset)
+              await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
+              await self.setRTSWebUSB(true);
+              await self.sleep(50);
+
+              // Assert EN=LOW (enter reset) - this releases IO0 back to HIGH
+              await self.setDTRWebUSB(true); // DTR=1, RTS=0 → EN=LOW, IO0=HIGH
               await self.setRTSWebUSB(false);
               await self.sleep(100);
 
-              await self.setDTRWebUSB(false); // IO0=LOW
-              await self.sleep(50);
+              // Release EN to HIGH while simultaneously setting IO0=LOW
+              // This is the critical moment - IO0 must be LOW when EN rises
+              await self.setDTRWebUSB(false); // DTR=0, RTS=1 → EN=HIGH, IO0=LOW
+              await self.setRTSWebUSB(true);
+              await self.sleep(200); // Keep IO0 LOW during boot sampling period
 
-              await self.setRTSWebUSB(true); // EN=LOW (reset)
-              await self.sleep(100);
-
-              await self.setRTSWebUSB(false); // EN=HIGH (boot)
-              await self.sleep(150); // Keep IO0 LOW
-
-              await self.setDTRWebUSB(true); // IO0=HIGH
-              await self.sleep(200);
-            },
-          });
-          resetStrategies.push({
-            name: "CP2102: IO0 held for 200ms",
-            fn: async function () {
-              self.logger.log("=== CP2102: IO0 held for 200ms ===");
-
-              await self.setDTRWebUSB(false);
+              // Release IO0 to HIGH
+              await self.setDTRWebUSB(false); // DTR=0, RTS=0 → EN=HIGH, IO0=HIGH
               await self.setRTSWebUSB(false);
-              await self.sleep(100);
-
-              await self.setDTRWebUSB(false); // IO0=LOW
-              await self.sleep(50);
-
-              await self.setRTSWebUSB(true); // EN=LOW (reset)
-              await self.sleep(100);
-
-              await self.setRTSWebUSB(false); // EN=HIGH (boot)
-              await self.sleep(200); // Keep IO0 LOW longer
-
-              await self.setDTRWebUSB(true); // IO0=HIGH
               await self.sleep(200);
             },
           });
