@@ -846,21 +846,18 @@ export class ESPLoader extends EventTarget {
               await self.setDTRWebUSB(false);
               await self.sleep(100);
 
-              // Set IO0 low (bootloader mode)
-              await self.setDTRWebUSB(false); // DTR=false -> IO0=LOW
+              // Set IO0 LOW first, then reset
+              await self.setDTRWebUSB(true); // DTR=true -> IO0=LOW
+              await self.sleep(10); // Small delay to ensure IO0 is stable
               await self.setRTSWebUSB(true); // RTS=true -> EN=LOW (chip in reset)
               await self.sleep(100);
 
-              // Chip out of reset with IO0 still low
-              await self.setDTRWebUSB(true); // DTR=true -> IO0=HIGH (after boot)
+              // Release reset while keeping IO0 LOW
               await self.setRTSWebUSB(false); // RTS=false -> EN=HIGH (chip out of reset)
-              // RTS set again as Windows/WebUSB workaround
-              await self.setRTSWebUSB(false);
-              await self.sleep(50);
+              await self.sleep(50); // Keep IO0 LOW for a bit after reset
 
-              // Final state
-              await self.setDTRWebUSB(false);
-              await self.setRTSWebUSB(false);
+              // Now release IO0
+              await self.setDTRWebUSB(false); // DTR=false -> IO0=HIGH
               await self.sleep(200);
             },
           });
