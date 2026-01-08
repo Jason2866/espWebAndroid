@@ -95,6 +95,10 @@ export class ESPLoader extends EventTarget {
     private _parent?: ESPLoader,
   ) {
     super();
+    console.log(
+      "[ESP_LOADER] Constructor called, port type:",
+      port?.constructor?.name,
+    );
   }
 
   private get _inputBuffer(): number[] {
