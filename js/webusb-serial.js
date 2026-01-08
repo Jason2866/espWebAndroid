@@ -468,11 +468,19 @@ class WebUSBSerial {
     async _setSignalsCP2102(signals) {
         // CP2102 uses vendor-specific request 0x07 (SET_MHS)
         // Bit 0: DTR, Bit 1: RTS, Bit 8-9: DTR/RTS mask
+        
+        // Handle undefined values - only set what's explicitly provided
         let value = 0;
-        value |= (signals.dataTerminalReady ? 1 : 0) | 0x100; // DTR + mask
-        value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
+        
+        if (signals.dataTerminalReady !== undefined) {
+            value |= (signals.dataTerminalReady ? 1 : 0) | 0x100; // DTR + mask
+        }
+        
+        if (signals.requestToSend !== undefined) {
+            value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
+        }
 
-        this._log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+        this._log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
@@ -480,7 +488,7 @@ class WebUSBSerial {
                 recipient: 'device',
                 request: 0x07, // SET_MHS (Modem Handshaking)
                 value: value,
-                index: 0
+                index: this.interfaceNumber || 0  // Use interface number, not 0!
             });
             
             this._log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);
