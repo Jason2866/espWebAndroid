@@ -552,6 +552,11 @@ export class ESPLoader extends EventTarget {
   async setRTSWebUSB(state: boolean) {
     console.log("[ESP_LOADER] setRTSWebUSB called:", state);
     await (this.port as any).setSignals({ requestToSend: state });
+    // Work-around for adapters on Windows/Android using the usbser.sys driver:
+    // generate a dummy change to DTR so that the set-control-line-state
+    // request is sent with the updated RTS state and the same DTR state
+    // This is critical for CP2102 and other USB-Serial adapters
+    await (this.port as any).setSignals({ dataTerminalReady: this.state_DTR });
   }
 
   async setDTRWebUSB(state: boolean) {
