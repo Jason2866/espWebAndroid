@@ -557,7 +557,9 @@ export class ESPLoader extends EventTarget {
   }
 
   async setDTRandRTSWebUSB(dtr: boolean, rts: boolean) {
-    console.log(`[ESP_LOADER] setDTRandRTSWebUSB called: DTR=${dtr}, RTS=${rts}`);
+    console.log(
+      `[ESP_LOADER] setDTRandRTSWebUSB called: DTR=${dtr}, RTS=${rts}`,
+    );
     this.state_DTR = dtr;
     await (this.port as any).setSignals({
       dataTerminalReady: dtr,
