@@ -777,17 +777,24 @@ export class ESPLoader extends EventTarget {
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
         // Try Inverted RTS first for CP2102/CH340
+        const self = this;
         resetStrategies.push({
           name: "Inverted RTS (WebUSB)",
-          fn: async () => await this.hardResetInvertedRTSWebUSB(),
+          fn: async function () {
+            return await self.hardResetInvertedRTSWebUSB();
+          },
         });
         resetStrategies.push({
           name: "Inverted DTR (WebUSB)",
-          fn: async () => await this.hardResetInvertedDTRWebUSB(),
+          fn: async function () {
+            return await self.hardResetInvertedDTRWebUSB();
+          },
         });
         resetStrategies.push({
           name: "Inverted Both (WebUSB)",
-          fn: async () => await this.hardResetInvertedWebUSB(),
+          fn: async function () {
+            return await self.hardResetInvertedWebUSB();
+          },
         });
       }
 
