@@ -32,6 +32,9 @@ class WebUSBSerial {
         
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;
+        
+        // Command queue for serializing control transfers (critical for CP2102)
+        this._commandQueue = Promise.resolve();
     }
 
     /**
@@ -388,39 +391,44 @@ class WebUSBSerial {
 
     /**
      * Set DTR/RTS signals (mimics port.setSignals())
+     * CRITICAL: Commands are serialized via queue for CP2102 compatibility
      */
     async setSignals(signals) {
-        if (!this.device) {
-            throw new Error('Device not open');
-        }
+        // Serialize all control transfers through a queue
+        // This is CRITICAL for CP2102 on Android - parallel commands cause hangs
+        return this._commandQueue = this._commandQueue.then(async () => {
+            if (!this.device) {
+                throw new Error('Device not open');
+            }
 
-        let value = 0;
-        value |= signals.dataTerminalReady ? 1 : 0;
-        value |= signals.requestToSend ? 2 : 0;
+            let value = 0;
+            value |= signals.dataTerminalReady ? 1 : 0;
+            value |= signals.requestToSend ? 2 : 0;
 
-        console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
+            console.log(`[WebUSB] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}, interface=${this.controlInterface || 0}`);
 
-        try {
-            const result = await this.device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: 0x22, // SET_CONTROL_LINE_STATE
-                value: value,
-                index: this.controlInterface || 0
-            });
-            
-            console.log(`[WebUSB] Control transfer result: status=${result.status}, bytesWritten=${result.bytesWritten}`);
-            
-            // Add delay to ensure signal is processed
-            // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
-            // Increased from 10ms to 50ms for better compatibility on Android
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            return result;
-        } catch (e) {
-            console.error(`[WebUSB] Failed to set signals: ${e.message}`);
-            throw e;
-        }
+            try {
+                const result = await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: 0x22, // SET_CONTROL_LINE_STATE
+                    value: value,
+                    index: this.controlInterface || 0
+                });
+                
+                console.log(`[WebUSB] Control transfer result: status=${result.status}, bytesWritten=${result.bytesWritten}`);
+                
+                // Add delay to ensure signal is processed
+                // USB-Serial chips (CP2102, CH340, etc.) need time to process control transfers
+                // Increased from 10ms to 50ms for better compatibility on Android
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
+                return result;
+            } catch (e) {
+                console.error(`[WebUSB] Failed to set signals: ${e.message}`);
+                throw e;
+            }
+        });
     }
 
     get readable() {

@@ -764,7 +764,7 @@ export class ESPLoader extends EventTarget {
 
     let lastError: Error | null = null;
 
-    // Try each reset strategy
+    // Try each reset strategy with timeout
     for (const strategy of resetStrategies) {
       try {
         this.logger.log(`Trying ${strategy.name} reset...`);
@@ -777,8 +777,13 @@ export class ESPLoader extends EventTarget {
 
         await strategy.fn();
 
-        // Try to sync after reset
-        await this.sync();
+        // Try to sync after reset with timeout (3 seconds per strategy)
+        const syncPromise = this.sync();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Sync timeout")), 3000),
+        );
+
+        await Promise.race([syncPromise, timeoutPromise]);
 
         // If we get here, sync succeeded
         this.logger.log(`Connected successfully with ${strategy.name} reset.`);
