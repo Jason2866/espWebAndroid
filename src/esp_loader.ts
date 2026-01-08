@@ -785,9 +785,12 @@ export class ESPLoader extends EventTarget {
 
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
-        // CH340 (VID: 0x1a86) - use only Inverted Both strategy
+        // CH340 (VID: 0x1a86, but not CH343) - use only Inverted Both strategy
         const isCH340 =
           portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId !== 0x55d3;
+        // CH343 (VID: 0x1a86, PID: 0x55d3) - use Inverted Both first, then others
+        const isCH343 =
+          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
 
         if (isCH340) {
           // CH340 only needs Inverted Both strategy
@@ -795,6 +798,32 @@ export class ESPLoader extends EventTarget {
             name: "Inverted Both (WebUSB) - CH340",
             fn: async function () {
               return await self.hardResetInvertedWebUSB();
+            },
+          });
+        } else if (isCH343) {
+          // CH343: Try Inverted Both first (tested and working), then fallbacks
+          resetStrategies.push({
+            name: "Inverted Both (WebUSB) - CH343",
+            fn: async function () {
+              return await self.hardResetInvertedWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Classic (WebUSB) - CH343 fallback",
+            fn: async function () {
+              return await self.hardResetClassicWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted RTS (WebUSB) - CH343 fallback",
+            fn: async function () {
+              return await self.hardResetInvertedRTSWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR (WebUSB) - CH343 fallback",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
             },
           });
         } else {
@@ -820,13 +849,15 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Classic reset (works for CH343)
-      resetStrategies.push({
-        name: "Classic (WebUSB)",
-        fn: async function () {
-          return await self.hardResetClassicWebUSB();
-        },
-      });
+      // Classic reset (for chips not handled above)
+      if (portInfo.usbVendorId !== 0x1a86) {
+        resetStrategies.push({
+          name: "Classic (WebUSB)",
+          fn: async function () {
+            return await self.hardResetClassicWebUSB();
+          },
+        });
+      }
 
       // UnixTight reset (sets DTR/RTS simultaneously)
       resetStrategies.push({
