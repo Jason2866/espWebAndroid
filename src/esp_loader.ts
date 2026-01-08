@@ -762,16 +762,17 @@ export class ESPLoader extends EventTarget {
 
       // WebUSB Strategy 1: USB-JTAG/Serial reset (for Native USB only)
       if (isUSBJTAGSerial || isEspressifUSB) {
-        resetStrategies.push({
-          name: "USB-JTAG/Serial (WebUSB)",
-          fn: async function () {
-            return await self.hardResetUSBJTAGSerialWebUSB();
-          },
-        });
+        // Try Inverted DTR first - works best for ESP32-H2 and other JTAG chips
         resetStrategies.push({
           name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
           fn: async function () {
             return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+          },
+        });
+        resetStrategies.push({
+          name: "USB-JTAG/Serial (WebUSB)",
+          fn: async function () {
+            return await self.hardResetUSBJTAGSerialWebUSB();
           },
         });
         resetStrategies.push({
