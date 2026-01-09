@@ -913,10 +913,10 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Add general fallback strategies only for non-CP2102 chips
+      // Add general fallback strategies only for non-CP2102 and non-ESP32-S2 Native USB chips
       const isCP2102 = portInfo.usbVendorId === 0x10c4;
 
-      if (!isCP2102) {
+      if (!isCP2102 && !isESP32S2NativeUSB) {
         // Classic reset (for chips not handled above)
         if (portInfo.usbVendorId !== 0x1a86) {
           resetStrategies.push({
