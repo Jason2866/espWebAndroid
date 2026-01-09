@@ -2666,7 +2666,7 @@ export class ESPLoader extends EventTarget {
                 deepRecoveryAttempted = true;
 
                 this.logger.log(
-                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (reload stub without closing port)...`,
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (close and reopen port)...`,
                 );
 
                 try {
