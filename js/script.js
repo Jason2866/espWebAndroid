@@ -429,15 +429,24 @@ async function clickConnect() {
       toggleUIConnected(false);
       espStub = undefined;
       
+      // Store the old device reference
+      const oldDevice = esploader.port.device;
+      
       try {
         // Close the port first
         await esploader.port.close();
         
-        // For Android WebUSB: forget the device so user can select the new one
-        if (isAndroid && esploader.port.device && esploader.port.device.forget) {
-          logMsg("Forgetting old device...");
-          await esploader.port.device.forget();
-          logMsg("Old device forgotten - waiting for ESP32-S2 to reconnect as CDC device");
+        // For Android WebUSB: DON'T forget the device!
+        // The ESP32-S2 is the SAME physical device, just in different mode
+        // We just need to close and reopen it
+        if (isAndroid && oldDevice) {
+          logMsg("ESP32-S2 switching to CDC mode - waiting for device to reconnect...");
+          
+          // Wait for device to switch modes (JTAG -> CDC)
+          // This takes about 2-3 seconds
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          logMsg("Device should now be in CDC mode");
         } else if (esploader.port.forget) {
           // For Desktop Web Serial
           await esploader.port.forget();
@@ -458,11 +467,49 @@ async function clickConnect() {
         modal.classList.add("hidden");
         reconnectBtn.removeEventListener("click", handleReconnect);
         
-        // Wait a bit longer for device to fully reconnect
-        logMsg("Waiting for device to reconnect...");
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        logMsg("Reconnecting to ESP32-S2 in CDC mode...");
         
-        // Trigger port selection
+        // For Android WebUSB: Try to reopen the SAME device
+        if (isAndroid && oldDevice) {
+          try {
+            // Create a new WebUSBSerial port with the same device
+            const port = new WebUSBSerial((...args) => logMsg(...args));
+            port.device = oldDevice;
+            
+            // Try to open it
+            await port.open({ baudRate: 115200 });
+            
+            // Create new esploader with this port
+            const esploaderMod = await window.esptoolPackage;
+            esploader = await esploaderMod.connectWithPort(port, {
+              log: (...args) => logMsg(...args),
+              debug: (...args) => debugMsg(...args),
+              error: (...args) => errorMsg(...args),
+            });
+            
+            // Initialize
+            await esploader.initialize();
+            
+            logMsg("Connected to " + esploader.chipName);
+            logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
+            
+            currentChipName = esploader.chipName;
+            espStub = await esploader.runStub();
+            
+            toggleUIConnected(true);
+            toggleUIToolbar(true);
+            
+            // Reset flag on successful connection
+            esp32s2ReconnectInProgress = false;
+            
+            return;
+          } catch (err) {
+            errorMsg("Failed to reconnect with same device: " + err.message);
+            logMsg("Trying device selection...");
+          }
+        }
+        
+        // Fallback: Use normal connect flow
         try {
           await clickConnect();
           // Reset flag on successful connection

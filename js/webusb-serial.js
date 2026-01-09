@@ -42,8 +42,9 @@ class WebUSBSerial {
 
     /**
      * Request USB device (mimics navigator.serial.requestPort())
+     * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
      */
-    static async requestPort(logger = null) {
+    static async requestPort(logger = null, forceNew = false) {
         const filters = [
             { vendorId: 0x303A }, // Espressif
             { vendorId: 0x0403 }, // FTDI
@@ -52,6 +53,8 @@ class WebUSBSerial {
             { vendorId: 0x067B }  // PL2303
         ];
 
+        // For ESP32-S2 reconnection, we need to request a NEW device
+        // because the old one was forgotten and a new CDC device appeared
         const device = await navigator.usb.requestDevice({ filters });
         const port = new WebUSBSerial(logger);
         port.device = device;
