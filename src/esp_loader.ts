@@ -90,8 +90,8 @@ export class ESPLoader extends EventTarget {
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
   // Adaptive speed adjustment for flash read operations
-  private __adaptiveBlockMultiplier: number = 1; // Start conservative
-  private __adaptiveMaxInFlightMultiplier: number = 1;
+  private __adaptiveBlockMultiplier: number = 8; // Start more aggressive (8 * 31 = 248 bytes)
+  private __adaptiveMaxInFlightMultiplier: number = 16; // Start more aggressive (16 * 31 = 496 bytes)
   private __consecutiveSuccessfulChunks: number = 0;
   private __lastAdaptiveAdjustment: number = 0;
 
@@ -2594,13 +2594,12 @@ export class ESPLoader extends EventTarget {
 
           if (this.isWebUSB()) {
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
-            // CRITICAL!! WebUSB: Keep values as multiples of 63 for avoiding slip errors
-            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 63 bytes
+            // CRITICAL!! WebUSB: Keep values as multiples of base for avoiding slip errors
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes with maxTransferSize=64
 
-            // For WebUSB on Android with CH343, use proven working values
-            // Start conservative and can be increased if stable
-            blockSize = baseBlockSize * 1; // 1 * 63 = 63 bytes
-            maxInFlight = baseBlockSize * 1; // 1 * 63 = 63 bytes
+            // ADAPTIVE: Use multipliers for dynamic adjustment
+            blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
+            maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
             const base = 63;
@@ -2612,6 +2611,11 @@ export class ESPLoader extends EventTarget {
             this.logger.debug(
               `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
             );
+            if (this.isWebUSB()) {
+              this.logger.debug(
+                `[Adaptive] blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+              );
+            }
           }
 
           const pkt = pack(
@@ -2703,18 +2707,21 @@ export class ESPLoader extends EventTarget {
           if (this.isWebUSB() && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
-            // After 3 consecutive successful chunks, try to increase speed
-            if (this._consecutiveSuccessfulChunks >= 3) {
+            // After 2 consecutive successful chunks, try to increase speed (faster ramp-up)
+            if (this._consecutiveSuccessfulChunks >= 2) {
               const maxTransferSize = (this.port as any).maxTransferSize || 128;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
 
-              // Maximum safe multipliers (don't exceed reasonable limits)
-              const MAX_BLOCK_MULTIPLIER = 16; // 31 * 16 = 496 bytes
-              const MAX_INFLIGHT_MULTIPLIER = 32; // 31 * 32 = 992 bytes
+              // Maximum safe multipliers - much higher limits for CDC chips
+              // With baseBlockSize=31: 
+              // - MAX_BLOCK: 31 * 64 = 1984 bytes
+              // - MAX_INFLIGHT: 31 * 128 = 3968 bytes
+              const MAX_BLOCK_MULTIPLIER = 64;
+              const MAX_INFLIGHT_MULTIPLIER = 128;
 
               let adjusted = false;
 
-              // Increase blockSize first (more important for throughput)
+              // Increase both simultaneously for faster ramp-up
               if (this._adaptiveBlockMultiplier < MAX_BLOCK_MULTIPLIER) {
                 this._adaptiveBlockMultiplier = Math.min(
                   this._adaptiveBlockMultiplier * 2,
@@ -2722,8 +2729,7 @@ export class ESPLoader extends EventTarget {
                 );
                 adjusted = true;
               }
-              // Then increase maxInFlight (helps with pipelining)
-              else if (
+              if (
                 this._adaptiveMaxInFlightMultiplier < MAX_INFLIGHT_MULTIPLIER
               ) {
                 this._adaptiveMaxInFlightMultiplier = Math.min(
