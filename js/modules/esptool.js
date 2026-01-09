@@ -5544,6 +5544,14 @@ class ESPLoader extends EventTarget {
             }
         }
         // All strategies failed
+        // For ESP32-S2 Native USB on Web Serial (Desktop), dispatch reconnect event
+        const portInfoCheck = this.port.getInfo();
+        const isESP32S2NativeUSBCheck = portInfoCheck.usbVendorId === 0x303a &&
+            portInfoCheck.usbProductId === 0x0002;
+        if (isESP32S2NativeUSBCheck && !this.isWebUSB()) {
+            // Desktop Web Serial: Dispatch event for reconnection
+            this.dispatchEvent(new Event("esp32s2-usb-reconnect"));
+        }
         throw new Error(`Couldn't sync to ESP. Try resetting manually. Last error: ${lastError === null || lastError === void 0 ? void 0 : lastError.message}`);
     }
     async hardReset(bootloader = false) {
