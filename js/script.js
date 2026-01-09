@@ -442,8 +442,8 @@ async function clickConnect() {
           logMsg("ESP32-S2 has switched to CDC mode - reconnecting automatically...");
           
           // The device has ALREADY switched to CDC mode (that's why we got disconnected)
-          // Just wait a short time for the USB stack to settle
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Wait longer for the device to fully settle in CDC mode
+          await new Promise(resolve => setTimeout(resolve, 2000));
           
           logMsg("Reconnecting to ESP32-S2 in CDC mode...");
           
@@ -456,15 +456,28 @@ async function clickConnect() {
             // Try to open it
             await port.open({ baudRate: 115200 });
             
+            logMsg("Port opened, waiting for device to be ready...");
+            
+            // Additional wait after opening - device needs time to initialize
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             // Create new esploader with this port
             const esploaderMod = await window.esptoolPackage;
+            
+            // IMPORTANT: For ESP32-S2 CDC mode, we need to connect WITHOUT triggering
+            // the normal reset strategies, because the device is already in bootloader mode
+            // after switching from JTAG to CDC
             esploader = await esploaderMod.connectWithPort(port, {
               log: (...args) => logMsg(...args),
               debug: (...args) => debugMsg(...args),
               error: (...args) => errorMsg(...args),
             });
             
-            // Initialize
+            // Mark that we're in a reconnect scenario
+            // This will prevent the esp32s2-usb-reconnect event from firing again
+            esploader._isReconnecting = true;
+            
+            // Initialize - this will try the reset strategies
             await esploader.initialize();
             
             logMsg("Connected to " + esploader.chipName);
@@ -482,7 +495,7 @@ async function clickConnect() {
             return;
           } catch (err) {
             errorMsg("Automatic reconnection failed: " + err.message);
-            logMsg("Please try connecting manually.");
+            logMsg("Please manually press and hold the BOOT button, then click Connect.");
             esp32s2ReconnectInProgress = false;
             return;
           }

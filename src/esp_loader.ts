@@ -771,8 +771,18 @@ export class ESPLoader extends EventTarget {
       // WebUSB Strategy 1: USB-JTAG/Serial reset (for Native USB only)
       if (isUSBJTAGSerial || isEspressifUSB) {
         if (isESP32S2NativeUSB) {
-          // ESP32-S2 Native USB: Try BOTH JTAG and CDC strategies
-          // First attempt: JTAG mode (if device is in JTAG mode)
+          // ESP32-S2 Native USB: Try multiple strategies
+          // The device might be in JTAG mode OR CDC mode
+
+          // Strategy 1: USB-JTAG/Serial (works in CDC mode on Desktop)
+          resetStrategies.push({
+            name: "USB-JTAG/Serial (WebUSB) - ESP32-S2",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+
+          // Strategy 2: USB-JTAG/Serial Inverted DTR (works in JTAG mode)
           resetStrategies.push({
             name: "USB-JTAG/Serial Inverted DTR (WebUSB) - ESP32-S2",
             fn: async function () {
@@ -780,8 +790,7 @@ export class ESPLoader extends EventTarget {
             },
           });
 
-          // Second attempt: CDC mode (if device switched to CDC mode)
-          // Use UnixTight which works well for CDC devices
+          // Strategy 3: UnixTight (CDC fallback)
           resetStrategies.push({
             name: "UnixTight (WebUSB) - ESP32-S2 CDC",
             fn: async function () {
@@ -789,7 +798,7 @@ export class ESPLoader extends EventTarget {
             },
           });
 
-          // Third attempt: Classic reset for CDC mode
+          // Strategy 4: Classic reset (CDC fallback)
           resetStrategies.push({
             name: "Classic (WebUSB) - ESP32-S2 CDC",
             fn: async function () {
