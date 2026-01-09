@@ -550,9 +550,6 @@ class WebUSBSerial {
     }
 
     _createStreams() {
-        // Check if this is ESP32-S2 for detailed logging
-        const isESP32S2 = this.device && this.device.vendorId === 0x303a && this.device.productId === 0x0002;
-        
         // ReadableStream for incoming data
         this.readableStream = new ReadableStream({
             start: async (controller) => {
@@ -564,15 +561,7 @@ class WebUSBSerial {
                             const result = await this.device.transferIn(this.endpointIn, this.maxTransferSize);
 
                             if (result.status === 'ok') {
-                                const data = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
-                                
-                                // Log received data for ESP32-S2
-                                if (isESP32S2 && data.length > 0) {
-                                    const hexStr = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                                    this._log(`[S2 RX] ${data.length} bytes: ${hexStr}`);
-                                }
-                                
-                                controller.enqueue(data);
+                                controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
                                 // No delay - immediately read next packet
                                 continue;
                             } else if (result.status === 'stall') {
@@ -615,13 +604,6 @@ class WebUSBSerial {
                 if (!this.device) {
                     throw new Error('Device not open');
                 }
-                
-                // Log sent data for ESP32-S2
-                if (isESP32S2 && chunk.length > 0) {
-                    const hexStr = Array.from(chunk).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                    this._log(`[S2 TX] ${chunk.length} bytes: ${hexStr}`);
-                }
-                
                 await this.device.transferOut(this.endpointOut, chunk);
             }
         });
