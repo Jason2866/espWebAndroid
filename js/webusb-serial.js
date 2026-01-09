@@ -26,9 +26,9 @@ class WebUSBSerial {
         };
         // Transfer size optimized for WebUSB on Android/Xiaomi
         // CRITICAL: blockSize = (maxTransferSize - 2) / 2
-        // Increased from 64 to 128 bytes for better performance
-        // With 128 bytes: blockSize = (128-2)/2 = 63 bytes per SLIP packet
-        this.maxTransferSize = 128;
+        // Set to 64 bytes for maximum compatibility with all USB-Serial adapters
+        // With 64 bytes: blockSize = (64-2)/2 = 31 bytes per SLIP packet
+        this.maxTransferSize = 64;
         
         // Flag to indicate this is WebUSB (used by esptool to adjust block sizes)
         this.isWebUSB = true;

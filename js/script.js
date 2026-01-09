@@ -510,48 +510,39 @@ async function clickConnect() {
 
   espStub = await esploader.runStub();
   
-  // CRITICAL FIX for Android/Xiaomi WebUSB SLIP errors:
-  // Set smaller block size for WebUSB (same as esp32_flasher for mobile devices)
+  // FIX for Android WebUSB SLIP errors:
+  // Set smaller block size for WebUSB
   if (isAndroid && espStub && espStub.transport && espStub.transport.device) {
-    // esp32_flasher formula: blockSize = (maxTransferSize - 2) / 2
-    // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
+    // Read maxTransferSize from WebUSBSerial device (centrally defined there)
     const maxTransferSize = espStub.transport.device.maxTransferSize || 64;
+    
+    // Formula: blockSize = (maxTransferSize - 2) / 2
+    // -2 for SLIP frame delimiters, /2 for worst-case escape sequences
     const blockSize = Math.floor((maxTransferSize - 2) / 2);
     
-    logMsg(`[Android/WebUSB] Setting flash read block size to ${blockSize} bytes (esp32_flasher mobile mode)`);
-    
-    // Debug: Log all available properties
-    logMsg(`[DEBUG] espStub properties: ${Object.keys(espStub).join(', ')}`);
-    if (espStub.transport) {
-      logMsg(`[DEBUG] espStub.transport properties: ${Object.keys(espStub.transport).join(', ')}`);
-    }
+    logMsg(`[Android/WebUSB] Setting flash read block size to ${blockSize} bytes (maxTransferSize=${maxTransferSize})`);
     
     // Patch all possible block size properties
     let patchedCount = 0;
     if (espStub.transport.FLASH_READ_SIZE !== undefined) {
       espStub.transport.FLASH_READ_SIZE = blockSize;
-      logMsg(`[DEBUG] Patched espStub.transport.FLASH_READ_SIZE = ${blockSize}`);
       patchedCount++;
     }
     if (espStub.flashReadSize !== undefined) {
       espStub.flashReadSize = blockSize;
-      logMsg(`[DEBUG] Patched espStub.flashReadSize = ${blockSize}`);
       patchedCount++;
     }
     if (espStub.FLASH_READ_SIZE !== undefined) {
       espStub.FLASH_READ_SIZE = blockSize;
-      logMsg(`[DEBUG] Patched espStub.FLASH_READ_SIZE = ${blockSize}`);
       patchedCount++;
     }
     if (espStub.transport.flashReadSize !== undefined) {
       espStub.transport.flashReadSize = blockSize;
-      logMsg(`[DEBUG] Patched espStub.transport.flashReadSize = ${blockSize}`);
       patchedCount++;
     }
     
     if (patchedCount === 0) {
-      logMsg(`[WARNING] Could not find any blockSize property to patch! Flash reads may fail.`);
-      logMsg(`[WARNING] This means esptool module structure is different than expected.`);
+      logMsg(`[WARNING] Could not find any blockSize property to patch!`);
     } else {
       logMsg(`[Android/WebUSB] Successfully patched ${patchedCount} blockSize properties`);
     }
