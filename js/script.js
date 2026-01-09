@@ -437,18 +437,15 @@ async function clickConnect() {
       espStub = undefined;
       
       try {
-        await esploader.port.close();
-        
-        // For WebUSB, forget the device
-        if (isAndroid && esploader.port.device) {
-          // WebUSB: device will disconnect and reconnect automatically
-          logMsg("WebUSB device will reconnect...");
-        } else if (esploader.port.forget) {
-          // Web Serial: forget the port
-          await esploader.port.forget();
+        // Disconnect cleanly - stop all operations first
+        if (esploader.connected) {
+          esploader.connected = false; // Prevent further write attempts
         }
+        await esploader.disconnect();
+        await esploader.port.close();
       } catch (disconnectErr) {
         // Ignore disconnect errors
+        console.debug("Disconnect error:", disconnectErr);
       }
       
       // Show modal dialog
@@ -482,14 +479,18 @@ async function clickConnect() {
     await esploader.initialize();
   } catch (err) {
     // Check if this is an ESP32-S2 that needs reconnection
-    if (isESP32S2 && !esp32s2ReconnectInProgress) {
+    const errorMessage = (err).message || '';
+    if (isESP32S2 && errorMessage.includes('ESP32-S2 Native USB requires port reselection') && !esp32s2ReconnectInProgress) {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
       toggleUIConnected(false);
       espStub = undefined;
       
       try {
-        // Disconnect cleanly to prevent write errors
+        // Disconnect cleanly - stop all operations first
+        if (esploader.connected) {
+          esploader.connected = false; // Prevent further write attempts
+        }
         await esploader.disconnect();
         await esploader.port.close();
       } catch (e) {

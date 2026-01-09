@@ -765,27 +765,41 @@ export class ESPLoader extends EventTarget {
       // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
       const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
 
+      // Check for ESP32-S2 Native USB (VID: 0x303a, PID: 0x0002)
+      const isESP32S2NativeUSB =
+        portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
+
       // WebUSB Strategy 1: USB-JTAG/Serial reset (for Native USB only)
       if (isUSBJTAGSerial || isEspressifUSB) {
-        // Try Inverted DTR first - works best for ESP32-H2 and other JTAG chips
-        resetStrategies.push({
-          name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
-          fn: async function () {
-            return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
-          },
-        });
-        resetStrategies.push({
-          name: "USB-JTAG/Serial (WebUSB)",
-          fn: async function () {
-            return await self.hardResetUSBJTAGSerialWebUSB();
-          },
-        });
-        resetStrategies.push({
-          name: "Inverted DTR Classic (WebUSB)",
-          fn: async function () {
-            return await self.hardResetInvertedDTRWebUSB();
-          },
-        });
+        if (isESP32S2NativeUSB) {
+          // ESP32-S2 Native USB: Only use Inverted DTR strategy
+          resetStrategies.push({
+            name: "USB-JTAG/Serial Inverted DTR (WebUSB) - ESP32-S2",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+            },
+          });
+        } else {
+          // Other USB-JTAG chips: Try Inverted DTR first - works best for ESP32-H2 and other JTAG chips
+          resetStrategies.push({
+            name: "USB-JTAG/Serial Inverted DTR (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialInvertedDTRWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "USB-JTAG/Serial (WebUSB)",
+            fn: async function () {
+              return await self.hardResetUSBJTAGSerialWebUSB();
+            },
+          });
+          resetStrategies.push({
+            name: "Inverted DTR Classic (WebUSB)",
+            fn: async function () {
+              return await self.hardResetInvertedDTRWebUSB();
+            },
+          });
+        }
       }
 
       // For USB-Serial chips, try inverted strategies first
@@ -1026,6 +1040,22 @@ export class ESPLoader extends EventTarget {
     }
 
     // All strategies failed
+    // Check if this is ESP32-S2 Native USB that needs port reselection
+    const portInfoCheck = this.port.getInfo();
+    const isESP32S2NativeUSB =
+      portInfoCheck.usbVendorId === 0x303a &&
+      portInfoCheck.usbProductId === 0x0002;
+
+    if (isESP32S2NativeUSB) {
+      this.logger.log(
+        "ESP32-S2 Native USB detected - requesting port reselection",
+      );
+      // Dispatch event for ESP32-S2 reconnection
+      this.dispatchEvent(new Event("esp32s2-usb-reconnect"));
+      // Throw error to trigger reconnection logic in script.js
+      throw new Error("ESP32-S2 Native USB requires port reselection");
+    }
+
     throw new Error(
       `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
     );
