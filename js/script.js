@@ -430,18 +430,21 @@ async function clickConnect() {
       espStub = undefined;
       
       try {
+        // Close the port first
         await esploader.port.close();
         
         // For Android WebUSB: forget the device so user can select the new one
         if (isAndroid && esploader.port.device && esploader.port.device.forget) {
+          logMsg("Forgetting old device...");
           await esploader.port.device.forget();
-          logMsg("Old device forgotten");
+          logMsg("Old device forgotten - waiting for ESP32-S2 to reconnect as CDC device");
         } else if (esploader.port.forget) {
           // For Desktop Web Serial
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
         // Ignore disconnect errors
+        console.warn("Error during disconnect:", disconnectErr);
       }
       
       // Show modal dialog
@@ -454,6 +457,10 @@ async function clickConnect() {
       const handleReconnect = async () => {
         modal.classList.add("hidden");
         reconnectBtn.removeEventListener("click", handleReconnect);
+        
+        // Wait a bit longer for device to fully reconnect
+        logMsg("Waiting for device to reconnect...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Trigger port selection
         try {
