@@ -790,53 +790,41 @@ export class ESPLoader extends EventTarget {
 
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
-        // CH340 (VID: 0x1a86, but not CH343) - use only Inverted Both strategy
-        const isCH340 =
-          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId !== 0x55d3;
-        // CH343 (VID: 0x1a86, PID: 0x55d3) - use Inverted Both first, then others
-        const isCH343 =
-          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
+        // CH340/CH343 (VID: 0x1a86) - use UnixTight first
+        const isCH34x = portInfo.usbVendorId === 0x1a86;
         // CP2102 (VID: 0x10c4) - needs standard (non-inverted) logic
         const isCP2102 = portInfo.usbVendorId === 0x10c4;
 
-        if (isCH340) {
-          // CH340: UnixTight works best (like CP2102)
+        if (isCH34x) {
+          // CH340/CH343: UnixTight works best (like CP2102)
           resetStrategies.push({
-            name: "UnixTight (WebUSB) - CH340",
+            name: "UnixTight (WebUSB) - CH34x",
             fn: async function () {
               return await self.hardResetUnixTightWebUSB();
             },
           });
           resetStrategies.push({
-            name: "Classic (WebUSB) - CH340",
+            name: "Classic (WebUSB) - CH34x",
             fn: async function () {
               return await self.hardResetClassicWebUSB();
             },
           });
           resetStrategies.push({
-            name: "Inverted Both (WebUSB) - CH340",
+            name: "Inverted Both (WebUSB) - CH34x",
             fn: async function () {
               return await self.hardResetInvertedWebUSB();
             },
           });
           resetStrategies.push({
-            name: "Inverted RTS (WebUSB) - CH340",
+            name: "Inverted RTS (WebUSB) - CH34x",
             fn: async function () {
               return await self.hardResetInvertedRTSWebUSB();
             },
           });
           resetStrategies.push({
-            name: "Inverted DTR (WebUSB) - CH340",
+            name: "Inverted DTR (WebUSB) - CH34x",
             fn: async function () {
               return await self.hardResetInvertedDTRWebUSB();
-            },
-          });
-        } else if (isCH343) {
-          // CH343: Supports CDC, use USB-JTAG/Serial strategy exclusively
-          resetStrategies.push({
-            name: "USB-JTAG/Serial (WebUSB) - CH343 CDC",
-            fn: async function () {
-              return await self.hardResetUSBJTAGSerialWebUSB();
             },
           });
         } else if (isCP2102) {

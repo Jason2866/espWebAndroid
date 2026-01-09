@@ -482,7 +482,7 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 1 : 0;
         value |= signals.requestToSend ? 2 : 0;
 
-        this._log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+//        this._log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
@@ -550,7 +550,7 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 0 : 0x20; // DTR (inverted)
         value |= signals.requestToSend ? 0 : 0x40;     // RTS (inverted)
 
-        this._log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
+//        this._log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
 
         try {
             const result = await this.device.controlTransferOut({
