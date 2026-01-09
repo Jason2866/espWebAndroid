@@ -515,51 +515,52 @@ async function clickConnect() {
         // Electron (Desktop): Automatic reconnection with getPorts
         // Wait for new port to appear
         logMsg("Waiting for ESP32-S2 CDC port...");
-      
-      const waitForNewPort = new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (navigator.serial && navigator.serial.getPorts) {
-            navigator.serial.getPorts().then(ports => {
-              if (ports.length > 0) {
-                clearInterval(checkInterval);
-                resolve(ports[0]);
-              }
-            });
-          }
-        }, 50);
         
-        // Timeout after 500 ms
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve(null);
-        }, 500);
-      });
-      
-      const newPort = await waitForNewPort;
-      
-      if (!newPort) {
+        const waitForNewPort = new Promise((resolve) => {
+          const checkInterval = setInterval(() => {
+            if (navigator.serial && navigator.serial.getPorts) {
+              navigator.serial.getPorts().then(ports => {
+                if (ports.length > 0) {
+                  clearInterval(checkInterval);
+                  resolve(ports[0]);
+                }
+              });
+            }
+          }, 50);
+          
+          // Timeout after 500 ms
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            resolve(null);
+          }, 500);
+        });
+        
+        const newPort = await waitForNewPort;
+        
+        if (!newPort) {
+          esp32s2ReconnectInProgress = false;
+          throw new Error("ESP32-S2 CDC port did not appear in time");
+        }
+        
+        // Additional small delay to ensure port is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Open the new port and create ESPLoader directly
+        await newPort.open({ baudRate: 115200 });
+        logMsg("Connected successfully.");
+        
+        esploader = new esploaderMod.ESPLoader(newPort, {
+          log: (...args) => logMsg(...args),
+          debug: (...args) => debugMsg(...args),
+          error: (...args) => errorMsg(...args),
+        });
+        
+        // Initialize the new connection
+        await esploader.initialize();
+        
         esp32s2ReconnectInProgress = false;
-        throw new Error("ESP32-S2 CDC port did not appear in time");
+        logMsg("ESP32-S2 reconnection successful!");
       }
-      
-      // Additional small delay to ensure port is ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Open the new port and create ESPLoader directly
-      await newPort.open({ baudRate: 115200 });
-      logMsg("Connected successfully.");
-      
-      esploader = new esploaderMod.ESPLoader(newPort, {
-        log: (...args) => logMsg(...args),
-        debug: (...args) => debugMsg(...args),
-        error: (...args) => errorMsg(...args),
-      });
-      
-      // Initialize the new connection
-      await esploader.initialize();
-      
-      esp32s2ReconnectInProgress = false;
-      logMsg("ESP32-S2 reconnection successful!");
     } else {
       // If ESP32-S2 reconnect is in progress (browser modal), suppress the error
       if (esp32s2ReconnectInProgress) {
