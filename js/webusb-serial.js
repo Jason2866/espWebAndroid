@@ -71,65 +71,33 @@ class WebUSBSerial {
 
         const baudRate = options.baudRate || 115200;
 
-        // If device is already opened, just reconfigure baudrate
+        // If device is already opened, we need to close and reopen it
+        // This is critical for ESP32-S2 which changes interfaces when switching modes
         if (this.device.opened) {
-            this._log('[WebUSB] Device already open, reconfiguring baudrate...');
+            this._log('[WebUSB] Device already open, closing and reopening to refresh interfaces...');
             
-            // Flush any pending data before reconfiguring
             try {
-                // Read and discard any pending data
-                let flushCount = 0;
-                while (flushCount < 10) {
-                    try {
-                        const result = await Promise.race([
-                            this.device.transferIn(this.endpointIn, this.maxTransferSize),
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10))
-                        ]);
-                        if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
-                            flushCount++;
-                        } else {
-                            break;
-                        }
-                    } catch (e) {
-                        break; // Timeout or error means buffer is empty
-                    }
+                // Release all interfaces
+                if (this.interfaceNumber !== null) {
+                    try { await this.device.releaseInterface(this.interfaceNumber); } catch (e) {}
                 }
-            } catch (e) {
-                console.warn('[WebUSB] Error flushing input buffer:', e.message);
-            }
-            
-            // Just update line coding without closing
-            try {
-                const lineCoding = new Uint8Array([
-                    baudRate & 0xFF,
-                    (baudRate >> 8) & 0xFF,
-                    (baudRate >> 16) & 0xFF,
-                    (baudRate >> 24) & 0xFF,
-                    0x00, // 1 stop bit
-                    0x00, // No parity
-                    0x08  // 8 data bits
-                ]);
-
-                await this.device.controlTransferOut({
-                    requestType: 'class',
-                    recipient: 'interface',
-                    request: 0x20, // SET_LINE_CODING
-                    value: 0,
-                    index: this.controlInterface || 0
-                }, lineCoding);
-                
-                this._log(`[WebUSB] Reconfigured to ${baudRate} baud`);
-                
-                // Make sure streams are created
-                if (!this.readableStream || !this.writableStream) {
-                    this._createStreams();
+                if (this.controlInterface !== null && this.controlInterface !== this.interfaceNumber) {
+                    try { await this.device.releaseInterface(this.controlInterface); } catch (e) {}
                 }
                 
-                return; // Success, no need to reopen
+                // Close the device
+                await this.device.close();
+                
+                // Reset interface numbers so they get re-scanned
+                this.interfaceNumber = null;
+                this.controlInterface = null;
+                this.endpointIn = null;
+                this.endpointOut = null;
+                
+                // Wait a bit for device to settle
+                await new Promise(resolve => setTimeout(resolve, 100));
             } catch (e) {
-                console.error('[WebUSB] Baudrate reconfiguration failed:', e.message);
-                // Don't try to reopen, just throw the error
-                throw new Error(`Unable to reconfigure baudrate: ${e.message}`);
+                console.warn('[WebUSB] Error during close:', e.message);
             }
         }
         
