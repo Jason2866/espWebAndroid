@@ -530,7 +530,13 @@ async function clickConnect() {
           const checkInterval = setInterval(() => {
             if (navigator.serial && navigator.serial.getPorts) {
               navigator.serial.getPorts().then(ports => {
-                if (ports.length > 0) {
+                // Filter out the old port - look for a different port or wait for reconnection
+                const availablePorts = ports.filter(p => p !== esploader.port);
+                if (availablePorts.length > 0) {
+                  clearInterval(checkInterval);
+                  resolve(availablePorts[0]);
+                } else if (ports.length > 0) {
+                  // Same port, might be reconnected - try it
                   clearInterval(checkInterval);
                   resolve(ports[0]);
                 }
@@ -538,11 +544,11 @@ async function clickConnect() {
             }
           }, 50);
           
-          // Timeout after 500 ms
+          // Timeout after 1000 ms (increased for device reconnection)
           setTimeout(() => {
             clearInterval(checkInterval);
             resolve(null);
-          }, 500);
+          }, 1000);
         });
         
         const newPort = await waitForNewPort;
@@ -552,8 +558,19 @@ async function clickConnect() {
           throw new Error("ESP32-S2 CDC port did not appear in time");
         }
         
-        // Additional small delay to ensure port is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Additional delay to ensure port is ready
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Check if port is already open, close it first
+        try {
+          if (newPort.readable || newPort.writable) {
+            logMsg("Closing old port connection...");
+            await newPort.close();
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        } catch (closeErr) {
+          console.debug("Port close before open error:", closeErr);
+        }
         
         // Open the new port and create ESPLoader directly
         await newPort.open({ baudRate: 115200 });
