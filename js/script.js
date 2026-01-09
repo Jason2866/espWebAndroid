@@ -436,94 +436,14 @@ async function clickConnect() {
         // Close the port first
         await esploader.port.close();
         
-        // For Android WebUSB: The device is the SAME, just switching modes
-        // No need to forget or reselect - just wait and reopen
-        if (isAndroid && oldDevice) {
-          logMsg("ESP32-S2 has switched to CDC mode - reconnecting automatically...");
-          
-          // The device has ALREADY switched to CDC mode (that's why we got disconnected)
-          // Wait longer for the device to fully settle in CDC mode
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          logMsg("Reconnecting to ESP32-S2 in CDC mode...");
-          
-          // Automatically reconnect without showing modal or device selection
-          try {
-            // Create a new WebUSBSerial port with the same device
-            const port = new WebUSBSerial((...args) => logMsg(...args));
-            port.device = oldDevice;
-            
-            // Try to open it
-            await port.open({ baudRate: 115200 });
-            
-            logMsg("Port opened, performing USB device reset...");
-            
-            // CRITICAL: Try USB device reset to force ESP32-S2 into bootloader mode
-            // This might be what happens on Desktop when port is forgotten and reopened
-            try {
-              await port.device.reset();
-              logMsg("USB device reset successful");
-              
-              // Wait for device to settle after reset
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              // Reopen the port after reset
-              await port.open({ baudRate: 115200 });
-              logMsg("Port reopened after USB reset");
-            } catch (resetErr) {
-              logMsg("USB device reset not supported or failed: " + resetErr.message);
-              
-              // Fallback: Try hardware reset sequence
-              logMsg("Trying hardware reset sequence instead...");
-              await port.setSignals({ requestToSend: false, dataTerminalReady: true });
-              await new Promise(resolve => setTimeout(resolve, 100));
-              await port.setSignals({ dataTerminalReady: false, requestToSend: false });
-              await new Promise(resolve => setTimeout(resolve, 100));
-              await port.setSignals({ requestToSend: true, dataTerminalReady: true });
-              await new Promise(resolve => setTimeout(resolve, 100));
-              await port.setSignals({ dataTerminalReady: true, requestToSend: false });
-              await new Promise(resolve => setTimeout(resolve, 200));
-            }
-            
-            logMsg("Reset complete, device should be in bootloader mode");
-            
-            // Create new esploader with this port
-            const esploaderMod = await window.esptoolPackage;
-            
-            esploader = await esploaderMod.connectWithPort(port, {
-              log: (...args) => logMsg(...args),
-              debug: (...args) => debugMsg(...args),
-              error: (...args) => errorMsg(...args),
-            });
-            
-            // CRITICAL: Prevent the esp32s2-usb-reconnect event from firing again
-            // The device is already in CDC mode, we don't want to reconnect again
-            esploader._isESP32S2NativeUSB = false;
-            
-            // Initialize - this will try the reset strategies
-            await esploader.initialize();
-            
-            logMsg("Connected to " + esploader.chipName);
-            logMsg("MAC Address: " + formatMacAddr(esploader.macAddr()));
-            
-            currentChipName = esploader.chipName;
-            espStub = await esploader.runStub();
-            
-            toggleUIConnected(true);
-            toggleUIToolbar(true);
-            
-            // Reset flag on successful connection
-            esp32s2ReconnectInProgress = false;
-            
-            return;
-          } catch (err) {
-            errorMsg("Automatic reconnection failed: " + err.message);
-            logMsg("Please manually press and hold the BOOT button, then click Connect.");
-            esp32s2ReconnectInProgress = false;
-            return;
-          }
+        // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
+        // Show message and let user reconnect manually with BOOT button
+        if (isAndroid) {
+          logMsg("ESP32-S2 has switched to CDC mode");
+          logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
+          esp32s2ReconnectInProgress = false;
+          return;
         }
-        
         // For Desktop Web Serial: Use the modal dialog approach
         if (!isAndroid && esploader.port.forget) {
           await esploader.port.forget();
