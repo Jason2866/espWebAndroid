@@ -478,14 +478,24 @@ async function clickConnect() {
       
       try {
         await esploader.port.close();
-      } catch (e) {
-        console.debug("Port close error:", e);
+      } catch (disconnectErr) {
+        // Ignore disconnect errors
       }
       
       if (isAndroid) {
         // WebUSB (Android): Show modal for manual port reselection
         // WebUSB requires user interaction to select the new CDC device
         logMsg("ESP32-S2 Native USB detected!");
+        
+        // Try to forget the old device so user can select the new one
+        try {
+          if (esploader.port && esploader.port.device && esploader.port.device.forget) {
+            await esploader.port.device.forget();
+            logMsg("Old device forgotten");
+          }
+        } catch (forgetErr) {
+          console.debug("Device forget error:", forgetErr);
+        }
         
         // Show modal dialog
         const modal = document.getElementById("esp32s2Modal");
