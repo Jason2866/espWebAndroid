@@ -1029,15 +1029,15 @@ export class ESPLoader extends EventTarget {
           break;
         }
 
-        //        // For ESP32-S2 Native USB, don't flush buffers - device will disconnect
-        //        const portInfo = this.port.getInfo();
-        //        const isESP32S2NativeUSB =
-        //          portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
-        //
-        //        if (isESP32S2NativeUSB) {
-        //          // ESP32-S2 Native USB disconnects after reset, skip buffer operations
-        //          break;
-        //        }
+        // For ESP32-S2 Native USB, don't flush buffers - device will disconnect
+        const portInfo = this.port.getInfo();
+        const isESP32S2NativeUSB =
+          portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
+
+        if (isESP32S2NativeUSB) {
+          // ESP32-S2 Native USB disconnects after reset, skip buffer operations
+          break;
+        }
 
         // Clear buffers before trying next strategy
         this._inputBuffer.length = 0;
