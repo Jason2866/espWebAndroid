@@ -365,6 +365,13 @@ async function clickConnect() {
     return;
   }
 
+  // Reset ESP32-S2 reconnect flag at the start of a new connection attempt
+  // This ensures clean state for reconnection scenarios
+  if (esp32s2ReconnectInProgress) {
+    console.log('[clickConnect] Resetting esp32s2ReconnectInProgress flag');
+    esp32s2ReconnectInProgress = false;
+  }
+
   console.log('[clickConnect] Getting esploaderMod...');
   const esploaderMod = await window.esptoolPackage;
 
@@ -479,8 +486,11 @@ async function clickConnect() {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
       toggleUIConnected(false);
+      espStub = undefined;
       
       try {
+        // Disconnect cleanly to prevent write errors
+        await esploader.disconnect();
         await esploader.port.close();
       } catch (e) {
         console.debug("Port close error:", e);
@@ -502,15 +512,15 @@ async function clickConnect() {
           modal.classList.add("hidden");
           reconnectBtn.removeEventListener("click", handleReconnect);
           
+          // Reset flag before triggering new connection
+          // This allows the new connection attempt to proceed normally
+          esp32s2ReconnectInProgress = false;
+          
           // Trigger port selection
           try {
             await clickConnect();
-            // Reset flag on successful connection
-            esp32s2ReconnectInProgress = false;
           } catch (err) {
             errorMsg("Failed to reconnect: " + err);
-            // Reset flag on error so user can try again
-            esp32s2ReconnectInProgress = false;
           }
         };
         
