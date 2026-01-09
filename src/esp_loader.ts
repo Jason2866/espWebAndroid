@@ -89,6 +89,12 @@ export class ESPLoader extends EventTarget {
   private __isReconfiguring: boolean = false;
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
+  // Adaptive speed adjustment for flash read operations
+  private __adaptiveBlockMultiplier: number = 1; // Start conservative
+  private __adaptiveMaxInFlightMultiplier: number = 1;
+  private __consecutiveSuccessfulChunks: number = 0;
+  private __lastAdaptiveAdjustment: number = 0;
+
   constructor(
     public port: SerialPort,
     public logger: Logger,
@@ -156,6 +162,62 @@ export class ESPLoader extends EventTarget {
       this._parent._bootloaderActive = value;
     } else {
       this.__bootloaderActive = value;
+    }
+  }
+
+  private get _adaptiveBlockMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveBlockMultiplier
+      : this.__adaptiveBlockMultiplier;
+  }
+
+  private set _adaptiveBlockMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveBlockMultiplier = value;
+    } else {
+      this.__adaptiveBlockMultiplier = value;
+    }
+  }
+
+  private get _adaptiveMaxInFlightMultiplier(): number {
+    return this._parent
+      ? this._parent._adaptiveMaxInFlightMultiplier
+      : this.__adaptiveMaxInFlightMultiplier;
+  }
+
+  private set _adaptiveMaxInFlightMultiplier(value: number) {
+    if (this._parent) {
+      this._parent._adaptiveMaxInFlightMultiplier = value;
+    } else {
+      this.__adaptiveMaxInFlightMultiplier = value;
+    }
+  }
+
+  private get _consecutiveSuccessfulChunks(): number {
+    return this._parent
+      ? this._parent._consecutiveSuccessfulChunks
+      : this.__consecutiveSuccessfulChunks;
+  }
+
+  private set _consecutiveSuccessfulChunks(value: number) {
+    if (this._parent) {
+      this._parent._consecutiveSuccessfulChunks = value;
+    } else {
+      this.__consecutiveSuccessfulChunks = value;
+    }
+  }
+
+  private get _lastAdaptiveAdjustment(): number {
+    return this._parent
+      ? this._parent._lastAdaptiveAdjustment
+      : this.__lastAdaptiveAdjustment;
+  }
+
+  private set _lastAdaptiveAdjustment(value: number) {
+    if (this._parent) {
+      this._parent._lastAdaptiveAdjustment = value;
+    } else {
+      this.__lastAdaptiveAdjustment = value;
     }
   }
 
@@ -2636,8 +2698,98 @@ export class ESPLoader extends EventTarget {
           allData = newAllData;
 
           chunkSuccess = true;
+
+          // ADAPTIVE SPEED ADJUSTMENT: Increase speed on successful chunks (WebUSB only)
+          if (this.isWebUSB() && retryCount === 0) {
+            this._consecutiveSuccessfulChunks++;
+
+            // After 3 consecutive successful chunks, try to increase speed
+            if (this._consecutiveSuccessfulChunks >= 3) {
+              const maxTransferSize = (this.port as any).maxTransferSize || 128;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+
+              // Maximum safe multipliers (don't exceed reasonable limits)
+              const MAX_BLOCK_MULTIPLIER = 16; // 31 * 16 = 496 bytes
+              const MAX_INFLIGHT_MULTIPLIER = 32; // 31 * 32 = 992 bytes
+
+              let adjusted = false;
+
+              // Increase blockSize first (more important for throughput)
+              if (this._adaptiveBlockMultiplier < MAX_BLOCK_MULTIPLIER) {
+                this._adaptiveBlockMultiplier = Math.min(
+                  this._adaptiveBlockMultiplier * 2,
+                  MAX_BLOCK_MULTIPLIER,
+                );
+                adjusted = true;
+              }
+              // Then increase maxInFlight (helps with pipelining)
+              else if (
+                this._adaptiveMaxInFlightMultiplier < MAX_INFLIGHT_MULTIPLIER
+              ) {
+                this._adaptiveMaxInFlightMultiplier = Math.min(
+                  this._adaptiveMaxInFlightMultiplier * 2,
+                  MAX_INFLIGHT_MULTIPLIER,
+                );
+                adjusted = true;
+              }
+
+              if (adjusted) {
+                const newBlockSize =
+                  baseBlockSize * this._adaptiveBlockMultiplier;
+                const newMaxInFlight =
+                  baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+                this.logger.log(
+                  `[Adaptive] Speed increased: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+                );
+                this._lastAdaptiveAdjustment = Date.now();
+              }
+
+              // Reset counter
+              this._consecutiveSuccessfulChunks = 0;
+            }
+          }
         } catch (err) {
           retryCount++;
+
+          // ADAPTIVE SPEED ADJUSTMENT: Reduce speed on errors (WebUSB only)
+          if (this.isWebUSB() && retryCount === 1) {
+            // Only adjust on first retry to avoid over-correction
+            const maxTransferSize = (this.port as any).maxTransferSize || 128;
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+
+            let adjusted = false;
+
+            // Reduce maxInFlight first (less disruptive)
+            if (this._adaptiveMaxInFlightMultiplier > 1) {
+              this._adaptiveMaxInFlightMultiplier = Math.max(
+                Math.floor(this._adaptiveMaxInFlightMultiplier / 2),
+                1,
+              );
+              adjusted = true;
+            }
+            // Then reduce blockSize if needed
+            else if (this._adaptiveBlockMultiplier > 1) {
+              this._adaptiveBlockMultiplier = Math.max(
+                Math.floor(this._adaptiveBlockMultiplier / 2),
+                1,
+              );
+              adjusted = true;
+            }
+
+            if (adjusted) {
+              const newBlockSize =
+                baseBlockSize * this._adaptiveBlockMultiplier;
+              const newMaxInFlight =
+                baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+              this.logger.log(
+                `[Adaptive] Speed reduced due to error: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+              );
+              this._lastAdaptiveAdjustment = Date.now();
+            }
+
+            // Reset success counter
+            this._consecutiveSuccessfulChunks = 0;
+          }
 
           // Check if it's a timeout error or SLIP error
           if (err instanceof SlipReadError) {
