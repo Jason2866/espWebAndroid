@@ -470,10 +470,11 @@ async function clickConnect() {
     await esploader.initialize();
   } catch (err) {
     // Check if this is an ESP32-S2 that needs reconnection
-    if (isESP32S2 && isElectron && !esp32s2ReconnectInProgress) {
+    if (isESP32S2 && !esp32s2ReconnectInProgress) {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
       toggleUIConnected(false);
+      espStub = undefined;
       
       try {
         await esploader.port.close();
@@ -481,8 +482,39 @@ async function clickConnect() {
         console.debug("Port close error:", e);
       }
       
-      // Wait for new port to appear
-      logMsg("Waiting for ESP32-S2 CDC port...");
+      if (isAndroid) {
+        // WebUSB (Android): Show modal for manual port reselection
+        // WebUSB requires user interaction to select the new CDC device
+        logMsg("ESP32-S2 Native USB detected!");
+        
+        // Show modal dialog
+        const modal = document.getElementById("esp32s2Modal");
+        const reconnectBtn = document.getElementById("butReconnectS2");
+        
+        modal.classList.remove("hidden");
+        
+        // Handle reconnect button click
+        const handleReconnect = async () => {
+          modal.classList.add("hidden");
+          reconnectBtn.removeEventListener("click", handleReconnect);
+          
+          // Reset flag before triggering new connection
+          esp32s2ReconnectInProgress = false;
+          
+          // Trigger port selection
+          try {
+            await clickConnect();
+          } catch (err) {
+            errorMsg("Failed to reconnect: " + err);
+          }
+        };
+        
+        reconnectBtn.addEventListener("click", handleReconnect);
+        return; // Exit early, wait for user action
+      } else if (isElectron) {
+        // Electron (Desktop): Automatic reconnection with getPorts
+        // Wait for new port to appear
+        logMsg("Waiting for ESP32-S2 CDC port...");
       
       const waitForNewPort = new Promise((resolve) => {
         const checkInterval = setInterval(() => {
