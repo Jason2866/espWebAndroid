@@ -735,9 +735,8 @@ export class ESPLoader extends EventTarget {
    * Check if we're using WebUSB (Android) or Web Serial (Desktop)
    */
   private isWebUSB(): boolean {
-    // WebUSBSerial class has isWebUSB flag
-    // Also check for device property as fallback (WebUSB has device, Web Serial doesn't)
-    return (this.port as any).isWebUSB === true || !!(this.port as any).device;
+    // WebUSBSerial class has isWebUSB flag - this is the most reliable check
+    return (this.port as any).isWebUSB === true;
   }
 
   /**
@@ -1040,22 +1039,6 @@ export class ESPLoader extends EventTarget {
     }
 
     // All strategies failed
-    // Check if this is ESP32-S2 Native USB that needs port reselection
-    const portInfoCheck = this.port.getInfo();
-    const isESP32S2NativeUSB =
-      portInfoCheck.usbVendorId === 0x303a &&
-      portInfoCheck.usbProductId === 0x0002;
-
-    if (isESP32S2NativeUSB) {
-      this.logger.log(
-        "ESP32-S2 Native USB detected - requesting port reselection",
-      );
-      // Dispatch event for ESP32-S2 reconnection
-      this.dispatchEvent(new Event("esp32s2-usb-reconnect"));
-      // Throw error to trigger reconnection logic in script.js
-      throw new Error("ESP32-S2 Native USB requires port reselection");
-    }
-
     throw new Error(
       `Couldn't sync to ESP. Try resetting manually. Last error: ${lastError?.message}`,
     );

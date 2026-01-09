@@ -478,115 +478,73 @@ async function clickConnect() {
   try {
     await esploader.initialize();
   } catch (err) {
-    // If ESP32-S2 reconnect is already in progress (triggered by event listener), suppress the error
-    if (esp32s2ReconnectInProgress) {
-      logMsg("Initialization interrupted for ESP32-S2 reconnection.");
-      return;
-    }
-    
-    // Check if this is an ESP32-S2 that needs reconnection (fallback for platforms without event listener)
-    const errorMessage = (err).message || '';
-    const isESP32S2ReconnectError = errorMessage.includes('ESP32-S2 Native USB requires port reselection');
-    
-    if (isESP32S2 && isESP32S2ReconnectError) {
+    // Check if this is an ESP32-S2 that needs reconnection (only for Electron/Desktop)
+    if (isESP32S2 && isElectron && !esp32s2ReconnectInProgress) {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
       toggleUIConnected(false);
-      espStub = undefined;
       
       try {
-        // Disconnect cleanly - stop all operations first
-        if (esploader.connected) {
-          esploader.connected = false; // Prevent further write attempts
-        }
-        await esploader.disconnect();
         await esploader.port.close();
       } catch (e) {
         console.debug("Port close error:", e);
       }
       
-      if (isAndroid) {
-        // WebUSB (Android): Always show modal for manual port reselection
-        // WebUSB requires user interaction to select the new CDC device
-        logMsg("ESP32-S2 Native USB detected!");
-        
-        // Show modal dialog
-        const modal = document.getElementById("esp32s2Modal");
-        const reconnectBtn = document.getElementById("butReconnectS2");
-        
-        modal.classList.remove("hidden");
-        
-        // Handle reconnect button click
-        const handleReconnect = async () => {
-          modal.classList.add("hidden");
-          reconnectBtn.removeEventListener("click", handleReconnect);
-          
-          // Reset flag before triggering new connection
-          // This allows the new connection attempt to proceed normally
-          esp32s2ReconnectInProgress = false;
-          
-          // Trigger port selection
-          try {
-            await clickConnect();
-          } catch (err) {
-            errorMsg("Failed to reconnect: " + err);
+      // Wait for new port to appear
+      logMsg("Waiting for ESP32-S2 CDC port...");
+      
+      const waitForNewPort = new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (navigator.serial && navigator.serial.getPorts) {
+            navigator.serial.getPorts().then(ports => {
+              if (ports.length > 0) {
+                clearInterval(checkInterval);
+                resolve(ports[0]);
+              }
+            });
           }
-        };
+        }, 50);
         
-        reconnectBtn.addEventListener("click", handleReconnect);
-        return; // Exit early, wait for user action
-      } else if (isElectron) {
-        // Electron (Desktop): Automatic reconnection with getPorts
-        // Wait for new port to appear
-        logMsg("Waiting for ESP32-S2 CDC port...");
-        
-        const waitForNewPort = new Promise((resolve) => {
-          const checkInterval = setInterval(() => {
-            if (navigator.serial && navigator.serial.getPorts) {
-              navigator.serial.getPorts().then(ports => {
-                if (ports.length > 0) {
-                  clearInterval(checkInterval);
-                  resolve(ports[0]);
-                }
-              });
-            }
-          }, 50);
-          
-          // Timeout after 500 ms
-          setTimeout(() => {
-            clearInterval(checkInterval);
-            resolve(null);
-          }, 500);
-        });
-        
-        const newPort = await waitForNewPort;
-        
-        if (!newPort) {
-          esp32s2ReconnectInProgress = false;
-          throw new Error("ESP32-S2 CDC port did not appear in time");
-        }
-        
-        // Additional small delay to ensure port is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Open the new port and create ESPLoader directly
-        await newPort.open({ baudRate: 115200 });
-        logMsg("Connected successfully.");
-        
-        esploader = new esploaderMod.ESPLoader(newPort, {
-          log: (...args) => logMsg(...args),
-          debug: (...args) => debugMsg(...args),
-          error: (...args) => errorMsg(...args),
-        });
-        
-        // Initialize the new connection
-        await esploader.initialize();
-        
+        // Timeout after 500 ms
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve(null);
+        }, 500);
+      });
+      
+      const newPort = await waitForNewPort;
+      
+      if (!newPort) {
         esp32s2ReconnectInProgress = false;
-        logMsg("ESP32-S2 reconnection successful!");
+        throw new Error("ESP32-S2 CDC port did not appear in time");
       }
+      
+      // Additional small delay to ensure port is ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Open the new port and create ESPLoader directly
+      await newPort.open({ baudRate: 115200 });
+      logMsg("Connected successfully.");
+      
+      esploader = new esploaderMod.ESPLoader(newPort, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+      
+      // Initialize the new connection
+      await esploader.initialize();
+      
+      esp32s2ReconnectInProgress = false;
+      logMsg("ESP32-S2 reconnection successful!");
     } else {
-      // Not ESP32-S2 or different error
+      // If ESP32-S2 reconnect is in progress (browser modal), suppress the error
+      if (esp32s2ReconnectInProgress) {
+        logMsg("Initialization interrupted for ESP32-S2 reconnection.");
+        return;
+      }
+      
+      // Not ESP32-S2 or reconnect already attempted
       try {
         await esploader.disconnect();
       } catch (disconnectErr) {
