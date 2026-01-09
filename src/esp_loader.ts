@@ -2712,12 +2712,12 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = (this.port as any).maxTransferSize || 128;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
 
-              // Maximum safe multipliers - much higher limits for CDC chips
+              // Maximum safe multipliers based on ESP32-C3 CDC testing
               // With baseBlockSize=31: 
-              // - MAX_BLOCK: 31 * 64 = 1984 bytes
-              // - MAX_INFLIGHT: 31 * 128 = 3968 bytes
-              const MAX_BLOCK_MULTIPLIER = 64;
-              const MAX_INFLIGHT_MULTIPLIER = 128;
+              // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable)
+              // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable)
+              const MAX_BLOCK_MULTIPLIER = 32;
+              const MAX_INFLIGHT_MULTIPLIER = 64;
 
               let adjusted = false;
 
