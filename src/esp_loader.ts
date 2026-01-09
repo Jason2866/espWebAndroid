@@ -2666,28 +2666,15 @@ export class ESPLoader extends EventTarget {
                 deepRecoveryAttempted = true;
 
                 this.logger.log(
-                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (reload stub without closing port)...`,
+                  `All retries exhausted at 0x${currentAddr.toString(16)}. Attempting recovery (close and reopen port)...`,
                 );
 
                 try {
-                  // Flush buffers
-                  this._inputBuffer.length = 0;
-                  await this.flushSerialBuffers();
-                  await sleep(200);
-
-                  // Try to sync with bootloader (should still be active)
-                  await this.sync();
-
-                  // Reload stub without closing port
-                  const stubLoader = await this.runStub(true);
-
-                  // Restore baudrate if it was changed
-                  if (this._currentBaudRate !== ESP_ROM_BAUD) {
-                    await stubLoader.setBaudrate(this._currentBaudRate);
-                  }
+                  // Reconnect will close port, reopen, and reload stub
+                  await this.reconnect();
 
                   this.logger.log(
-                    "Recovery successful. Resuming read from current position...",
+                    "Deep recovery successful. Resuming read from current position...",
                   );
 
                   // Reset retry counter to give it another chance after recovery
