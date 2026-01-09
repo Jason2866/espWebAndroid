@@ -456,23 +456,36 @@ async function clickConnect() {
             // Try to open it
             await port.open({ baudRate: 115200 });
             
-            logMsg("Port opened, performing USB-JTAG/Serial reset (inverted DTR) to enter bootloader...");
+            logMsg("Port opened, performing USB device reset...");
             
-            // CRITICAL: Use USB-JTAG/Serial Inverted DTR reset for ESP32-S2
-            // This is the sequence that works when BOOT button is pressed manually
-            await port.setSignals({ requestToSend: false, dataTerminalReady: true }); // Idle (DTR inverted)
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // CRITICAL: Try USB device reset to force ESP32-S2 into bootloader mode
+            // This might be what happens on Desktop when port is forgotten and reopened
+            try {
+              await port.device.reset();
+              logMsg("USB device reset successful");
+              
+              // Wait for device to settle after reset
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Reopen the port after reset
+              await port.open({ baudRate: 115200 });
+              logMsg("Port reopened after USB reset");
+            } catch (resetErr) {
+              logMsg("USB device reset not supported or failed: " + resetErr.message);
+              
+              // Fallback: Try hardware reset sequence
+              logMsg("Trying hardware reset sequence instead...");
+              await port.setSignals({ requestToSend: false, dataTerminalReady: true });
+              await new Promise(resolve => setTimeout(resolve, 100));
+              await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+              await new Promise(resolve => setTimeout(resolve, 100));
+              await port.setSignals({ requestToSend: true, dataTerminalReady: true });
+              await new Promise(resolve => setTimeout(resolve, 100));
+              await port.setSignals({ dataTerminalReady: true, requestToSend: false });
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
             
-            await port.setSignals({ dataTerminalReady: false, requestToSend: false }); // Set IO0 (DTR inverted)
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await port.setSignals({ requestToSend: true, dataTerminalReady: true }); // Reset (DTR inverted)
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await port.setSignals({ dataTerminalReady: true, requestToSend: false }); // Chip out of reset (DTR inverted)
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            logMsg("USB-JTAG/Serial reset complete, device should be in bootloader mode");
+            logMsg("Reset complete, device should be in bootloader mode");
             
             // Create new esploader with this port
             const esploaderMod = await window.esptoolPackage;
