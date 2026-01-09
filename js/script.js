@@ -480,7 +480,15 @@ async function clickConnect() {
   } catch (err) {
     // Check if this is an ESP32-S2 that needs reconnection
     const errorMessage = (err).message || '';
-    if (isESP32S2 && errorMessage.includes('ESP32-S2 Native USB requires port reselection') && !esp32s2ReconnectInProgress) {
+    const isESP32S2ReconnectError = errorMessage.includes('ESP32-S2 Native USB requires port reselection');
+    
+    if (isESP32S2 && (isESP32S2ReconnectError || !esp32s2ReconnectInProgress)) {
+      // Skip if already in reconnect mode and not the specific error
+      if (esp32s2ReconnectInProgress && !isESP32S2ReconnectError) {
+        logMsg("Initialization interrupted for ESP32-S2 reconnection.");
+        return;
+      }
+      
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
       toggleUIConnected(false);
