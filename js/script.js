@@ -415,9 +415,9 @@ async function clickConnect() {
   let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
   let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
   
-  // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
-  // Only add listener if not already in reconnect mode and not in Electron
-  if (!esp32s2ReconnectInProgress && !isElectron) {
+  // Handle ESP32-S2 Native USB reconnection requirement for BROWSER (not Android WebUSB)
+  // Only add listener if not already in reconnect mode and not in Electron and not Android
+  if (!esp32s2ReconnectInProgress && !isElectron && !isAndroid) {
     esploader.addEventListener("esp32s2-usb-reconnect", async () => {
       // Prevent recursive calls
       if (esp32s2ReconnectInProgress) {

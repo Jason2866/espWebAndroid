@@ -935,7 +935,7 @@ export class ESPLoader extends EventTarget {
           },
         });
 
-        // WebUSB Strategy 7: Classic with long delays
+        // WebUSB Strategy: Classic with long delays
         resetStrategies.push({
           name: "Classic Long Delay (WebUSB)",
           fn: async function () {
@@ -943,7 +943,7 @@ export class ESPLoader extends EventTarget {
           },
         });
 
-        // WebUSB Strategy 8: Classic with short delays
+        // WebUSB Strategy: Classic with short delays
         resetStrategies.push({
           name: "Classic Short Delay (WebUSB)",
           fn: async function () {
@@ -951,7 +951,7 @@ export class ESPLoader extends EventTarget {
           },
         });
 
-        // WebUSB Strategy 9: USB-JTAG/Serial fallback
+        // WebUSB Strategy: USB-JTAG/Serial fallback
         if (!isUSBJTAGSerial && !isEspressifUSB) {
           resetStrategies.push({
             name: "USB-JTAG/Serial fallback (WebUSB)",
@@ -963,7 +963,7 @@ export class ESPLoader extends EventTarget {
       }
     } else {
       // Web Serial (Desktop) strategies
-      // Strategy 1: USB-JTAG/Serial reset
+      // Strategy: USB-JTAG/Serial reset
       if (isUSBJTAGSerial || isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial",
@@ -973,7 +973,7 @@ export class ESPLoader extends EventTarget {
         });
       }
 
-      // Strategy 2: Classic reset
+      // Strategy: Classic reset
       resetStrategies.push({
         name: "Classic",
         fn: async function () {
@@ -981,7 +981,7 @@ export class ESPLoader extends EventTarget {
         },
       });
 
-      // Strategy 3: USB-JTAG/Serial fallback
+      // Strategy: USB-JTAG/Serial fallback
       if (!isUSBJTAGSerial && !isEspressifUSB) {
         resetStrategies.push({
           name: "USB-JTAG/Serial (fallback)",
@@ -997,8 +997,6 @@ export class ESPLoader extends EventTarget {
     // Try each reset strategy with timeout
     for (const strategy of resetStrategies) {
       try {
-        //        this.logger.log(`Trying ${strategy.name} reset...`);
-
         // Check if port is still open, if not, skip this strategy
         if (!this.connected || !this.port.writable) {
           this.logger.log(`Port disconnected, skipping ${strategy.name} reset`);
@@ -2700,7 +2698,6 @@ export class ESPLoader extends EventTarget {
       );
     }
 
-    // this.logger.debug(`Successfully read ${allData.length} bytes from flash`);
     return allData;
   }
 }
