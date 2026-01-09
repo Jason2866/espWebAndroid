@@ -320,37 +320,7 @@ class WebUSBSerial {
             } catch (e) {
                 console.warn('Could not set control lines:', e.message);
             }
-        }        
-        // CRITICAL: Flush USB input buffer before creating streams
-        // This is especially important for ESP32-S2 which may send boot messages
-        if (this.endpointIn) {
-            try {
-                this._log('[WebUSB] Flushing USB input buffer...');
-                let flushedBytes = 0;
-                for (let i = 0; i < 20; i++) {
-                    try {
-                        const result = await Promise.race([
-                            this.device.transferIn(this.endpointIn, this.maxTransferSize),
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 50))
-                        ]);
-                        if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
-                            flushedBytes += result.data.byteLength;
-                        } else {
-                            break;
-                        }
-                    } catch (e) {
-                        break; // Timeout means buffer is empty
-                    }
-                }
-                if (flushedBytes > 0) {
-                    this._log(`[WebUSB] Flushed ${flushedBytes} bytes from USB buffer`);
-                }
-            } catch (e) {
-                console.warn('[WebUSB] Error flushing USB buffer:', e.message);
-            }
-        }
-        
-        // Create streams only if they don't exist yet
+        }        // Create streams only if they don't exist yet
         if (!this.readableStream || !this.writableStream) {
             this._createStreams();
         } else {
