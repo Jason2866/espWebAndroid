@@ -521,8 +521,8 @@ async function clickConnect() {
         
         reconnectBtn.addEventListener("click", handleReconnect);
         return; // Exit early, wait for user action
-      } else if (isElectron) {
-        // Electron (Desktop): Automatic reconnection with getPorts
+      } else {
+        // Desktop (Web Serial): Automatic reconnection with getPorts
         // Wait for new port to appear
         logMsg("Waiting for ESP32-S2 CDC port...");
         
