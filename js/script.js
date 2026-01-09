@@ -436,41 +436,18 @@ async function clickConnect() {
         // Close the port first
         await esploader.port.close();
         
-        // For Android WebUSB: DON'T forget the device!
-        // The ESP32-S2 is the SAME physical device, just in different mode
-        // We just need to close and reopen it
+        // For Android WebUSB: The device is the SAME, just switching modes
+        // No need to forget or reselect - just wait and reopen
         if (isAndroid && oldDevice) {
-          logMsg("ESP32-S2 switching to CDC mode - waiting for device to reconnect...");
+          logMsg("ESP32-S2 has switched to CDC mode - reconnecting automatically...");
           
-          // Wait for device to switch modes (JTAG -> CDC)
-          // This takes about 2-3 seconds
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // The device has ALREADY switched to CDC mode (that's why we got disconnected)
+          // Just wait a short time for the USB stack to settle
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
-          logMsg("Device should now be in CDC mode");
-        } else if (esploader.port.forget) {
-          // For Desktop Web Serial
-          await esploader.port.forget();
-        }
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-        console.warn("Error during disconnect:", disconnectErr);
-      }
-      
-      // Show modal dialog
-      const modal = document.getElementById("esp32s2Modal");
-      const reconnectBtn = document.getElementById("butReconnectS2");
-      
-      modal.classList.remove("hidden");
-      
-      // Handle reconnect button click
-      const handleReconnect = async () => {
-        modal.classList.add("hidden");
-        reconnectBtn.removeEventListener("click", handleReconnect);
-        
-        logMsg("Reconnecting to ESP32-S2 in CDC mode...");
-        
-        // For Android WebUSB: Try to reopen the SAME device
-        if (isAndroid && oldDevice) {
+          logMsg("Reconnecting to ESP32-S2 in CDC mode...");
+          
+          // Automatically reconnect without showing modal or device selection
           try {
             // Create a new WebUSBSerial port with the same device
             const port = new WebUSBSerial((...args) => logMsg(...args));
@@ -504,24 +481,50 @@ async function clickConnect() {
             
             return;
           } catch (err) {
-            errorMsg("Failed to reconnect with same device: " + err.message);
-            logMsg("Trying device selection...");
+            errorMsg("Automatic reconnection failed: " + err.message);
+            logMsg("Please try connecting manually.");
+            esp32s2ReconnectInProgress = false;
+            return;
           }
         }
         
-        // Fallback: Use normal connect flow
-        try {
-          await clickConnect();
-          // Reset flag on successful connection
-          esp32s2ReconnectInProgress = false;
-        } catch (err) {
-          errorMsg("Failed to reconnect: " + err);
-          // Reset flag on error so user can try again
-          esp32s2ReconnectInProgress = false;
+        // For Desktop Web Serial: Use the modal dialog approach
+        if (!isAndroid && esploader.port.forget) {
+          await esploader.port.forget();
         }
-      };
+      } catch (disconnectErr) {
+        // Ignore disconnect errors
+        console.warn("Error during disconnect:", disconnectErr);
+      }
       
-      reconnectBtn.addEventListener("click", handleReconnect);
+      // Show modal dialog ONLY for Desktop
+      if (!isAndroid) {
+        const modal = document.getElementById("esp32s2Modal");
+        const reconnectBtn = document.getElementById("butReconnectS2");
+        
+        modal.classList.remove("hidden");
+        
+        // Handle reconnect button click
+        const handleReconnect = async () => {
+          modal.classList.add("hidden");
+          reconnectBtn.removeEventListener("click", handleReconnect);
+          
+          logMsg("Requesting new device selection...");
+          
+          // Trigger port selection
+          try {
+            await clickConnect();
+            // Reset flag on successful connection
+            esp32s2ReconnectInProgress = false;
+          } catch (err) {
+            errorMsg("Failed to reconnect: " + err);
+            // Reset flag on error so user can try again
+            esp32s2ReconnectInProgress = false;
+          }
+        };
+        
+        reconnectBtn.addEventListener("click", handleReconnect);
+      }
     });
   }
   
