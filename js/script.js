@@ -456,10 +456,23 @@ async function clickConnect() {
             // Try to open it
             await port.open({ baudRate: 115200 });
             
-            logMsg("Port opened, waiting for device to be ready...");
+            logMsg("Port opened, performing USB-JTAG/Serial reset (inverted DTR) to enter bootloader...");
             
-            // Additional wait after opening - device needs time to initialize
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // CRITICAL: Use USB-JTAG/Serial Inverted DTR reset for ESP32-S2
+            // This is the sequence that works when BOOT button is pressed manually
+            await port.setSignals({ requestToSend: false, dataTerminalReady: true }); // Idle (DTR inverted)
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await port.setSignals({ dataTerminalReady: false, requestToSend: false }); // Set IO0 (DTR inverted)
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await port.setSignals({ requestToSend: true, dataTerminalReady: true }); // Reset (DTR inverted)
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await port.setSignals({ dataTerminalReady: true, requestToSend: false }); // Chip out of reset (DTR inverted)
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            logMsg("USB-JTAG/Serial reset complete, device should be in bootloader mode");
             
             // Create new esploader with this port
             const esploaderMod = await window.esptoolPackage;
