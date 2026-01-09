@@ -415,9 +415,9 @@ async function clickConnect() {
   let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
   let isESP32S2 = portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x0002;
   
-  // Handle ESP32-S2 Native USB reconnection requirement for BROWSER (Desktop, not Android)
-  // Only add listener if not already in reconnect mode and not in Electron and not Android
-  if (!esp32s2ReconnectInProgress && !isElectron && !isAndroid) {
+  // Handle ESP32-S2 Native USB reconnection requirement for BROWSER
+  // Only add listener if not already in reconnect mode and not in Electron
+  if (!esp32s2ReconnectInProgress && !isElectron) {
     esploader.addEventListener("esp32s2-usb-reconnect", async () => {
       // Prevent recursive calls
       if (esp32s2ReconnectInProgress) {
@@ -432,7 +432,12 @@ async function clickConnect() {
       try {
         await esploader.port.close();
         
-        if (esploader.port.forget) {
+        // For Android WebUSB: forget the device so user can select the new one
+        if (isAndroid && esploader.port.device && esploader.port.device.forget) {
+          await esploader.port.device.forget();
+          logMsg("Old device forgotten");
+        } else if (esploader.port.forget) {
+          // For Desktop Web Serial
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
@@ -469,74 +474,19 @@ async function clickConnect() {
   try {
     await esploader.initialize();
   } catch (err) {
-    // Check if this is an ESP32-S2 that needs reconnection
-    if (isESP32S2 && !esp32s2ReconnectInProgress) {
-      esp32s2ReconnectInProgress = true;
-      logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
-      toggleUIConnected(false);
-      espStub = undefined;
-      
-      try {
-        await esploader.port.close();
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-      }
-      
-      if (isAndroid) {
-        // WebUSB (Android): Show modal for manual port reselection
-        // WebUSB requires user interaction to select the new CDC device
-        logMsg("ESP32-S2 Native USB detected!");
-        
-        // Try to forget the old device so user can select the new one
-        try {
-          if (esploader.port && esploader.port.device && esploader.port.device.forget) {
-            await esploader.port.device.forget();
-            logMsg("Old device forgotten");
-          }
-        } catch (forgetErr) {
-          console.debug("Device forget error:", forgetErr);
-        }
-        
-        // Show modal dialog
-        const modal = document.getElementById("esp32s2Modal");
-        const reconnectBtn = document.getElementById("butReconnectS2");
-        
-        modal.classList.remove("hidden");
-        
-        // Handle reconnect button click
-        const handleReconnect = async () => {
-          modal.classList.add("hidden");
-          reconnectBtn.removeEventListener("click", handleReconnect);
-          
-          // Reset flag before triggering new connection
-          esp32s2ReconnectInProgress = false;
-          
-          // Trigger port selection
-          try {
-            await clickConnect();
-          } catch (err) {
-            errorMsg("Failed to reconnect: " + err);
-          }
-        };
-        
-        reconnectBtn.addEventListener("click", handleReconnect);
-        return; // Exit early, wait for user action
-      }
-    } else {
-      // If ESP32-S2 reconnect is in progress (browser modal), suppress the error
-      if (esp32s2ReconnectInProgress) {
-        logMsg("Initialization interrupted for ESP32-S2 reconnection.");
-        return;
-      }
-      
-      // Not ESP32-S2 or reconnect already attempted
-      try {
-        await esploader.disconnect();
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-      }
-      throw err;
+    // If ESP32-S2 reconnect is in progress (handled by event listener), suppress the error
+    if (esp32s2ReconnectInProgress) {
+      logMsg("Initialization interrupted for ESP32-S2 reconnection.");
+      return;
     }
+    
+    // Not ESP32-S2 or other error
+    try {
+      await esploader.disconnect();
+    } catch (disconnectErr) {
+      // Ignore disconnect errors
+    }
+    throw err;
   }
 
   logMsg("Connected to " + esploader.chipName);
