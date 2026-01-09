@@ -365,13 +365,6 @@ async function clickConnect() {
     return;
   }
 
-  // Reset ESP32-S2 reconnect flag at the start of a new connection attempt
-  // This ensures clean state for reconnection scenarios
-  if (esp32s2ReconnectInProgress) {
-    console.log('[clickConnect] Resetting esp32s2ReconnectInProgress flag');
-    esp32s2ReconnectInProgress = false;
-  }
-
   console.log('[clickConnect] Getting esploaderMod...');
   const esploaderMod = await window.esptoolPackage;
 
@@ -437,15 +430,13 @@ async function clickConnect() {
       espStub = undefined;
       
       try {
-        // Disconnect cleanly - stop all operations first
-        if (esploader.connected) {
-          esploader.connected = false; // Prevent further write attempts
-        }
-        await esploader.disconnect();
         await esploader.port.close();
+        
+        if (esploader.port.forget) {
+          await esploader.port.forget();
+        }
       } catch (disconnectErr) {
         // Ignore disconnect errors
-        console.debug("Disconnect error:", disconnectErr);
       }
       
       // Show modal dialog
@@ -478,7 +469,7 @@ async function clickConnect() {
   try {
     await esploader.initialize();
   } catch (err) {
-    // Check if this is an ESP32-S2 that needs reconnection (only for Electron/Desktop)
+    // Check if this is an ESP32-S2 that needs reconnection
     if (isESP32S2 && isElectron && !esp32s2ReconnectInProgress) {
       esp32s2ReconnectInProgress = true;
       logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
