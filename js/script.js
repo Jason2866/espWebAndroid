@@ -464,18 +464,15 @@ async function clickConnect() {
             // Create new esploader with this port
             const esploaderMod = await window.esptoolPackage;
             
-            // IMPORTANT: For ESP32-S2 CDC mode, we need to connect WITHOUT triggering
-            // the normal reset strategies, because the device is already in bootloader mode
-            // after switching from JTAG to CDC
             esploader = await esploaderMod.connectWithPort(port, {
               log: (...args) => logMsg(...args),
               debug: (...args) => debugMsg(...args),
               error: (...args) => errorMsg(...args),
             });
             
-            // Mark that we're in a reconnect scenario
-            // This will prevent the esp32s2-usb-reconnect event from firing again
-            esploader._isReconnecting = true;
+            // CRITICAL: Prevent the esp32s2-usb-reconnect event from firing again
+            // The device is already in CDC mode, we don't want to reconnect again
+            esploader._isESP32S2NativeUSB = false;
             
             // Initialize - this will try the reset strategies
             await esploader.initialize();
