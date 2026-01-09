@@ -486,65 +486,41 @@ async function clickConnect() {
         console.debug("Port close error:", e);
       }
       
-      // Wait for new port to appear
-      logMsg("Waiting for ESP32-S2 CDC port...");
-      
       if (isAndroid) {
-        // WebUSB (Android): Wait for device to reconnect
-        const waitForNewDevice = new Promise((resolve) => {
-          const checkInterval = setInterval(() => {
-            if (navigator.usb && navigator.usb.getDevices) {
-              navigator.usb.getDevices().then(devices => {
-                // Look for ESP32-S2 CDC device (VID: 0x303a, PID: 0x0002)
-                const esp32s2Device = devices.find(d => 
-                  d.vendorId === 0x303a && d.productId === 0x0002
-                );
-                if (esp32s2Device) {
-                  clearInterval(checkInterval);
-                  resolve(esp32s2Device);
-                }
-              });
-            }
-          }, 50);
+        // WebUSB (Android): Always show modal for manual port reselection
+        // WebUSB requires user interaction to select the new CDC device
+        logMsg("ESP32-S2 Native USB detected!");
+        
+        // Show modal dialog
+        const modal = document.getElementById("esp32s2Modal");
+        const reconnectBtn = document.getElementById("butReconnectS2");
+        
+        modal.classList.remove("hidden");
+        
+        // Handle reconnect button click
+        const handleReconnect = async () => {
+          modal.classList.add("hidden");
+          reconnectBtn.removeEventListener("click", handleReconnect);
           
-          // Timeout after 500 ms
-          setTimeout(() => {
-            clearInterval(checkInterval);
-            resolve(null);
-          }, 500);
-        });
+          // Trigger port selection
+          try {
+            await clickConnect();
+            // Reset flag on successful connection
+            esp32s2ReconnectInProgress = false;
+          } catch (err) {
+            errorMsg("Failed to reconnect: " + err);
+            // Reset flag on error so user can try again
+            esp32s2ReconnectInProgress = false;
+          }
+        };
         
-        const newDevice = await waitForNewDevice;
-        
-        if (!newDevice) {
-          esp32s2ReconnectInProgress = false;
-          throw new Error("ESP32-S2 CDC device did not appear in time");
-        }
-        
-        // Additional small delay to ensure device is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Create new WebUSBSerial port with the device
-        const newPort = new WebUSBSerial((...args) => logMsg(...args));
-        newPort.device = newDevice;
-        
-        // Open the new port
-        await newPort.open({ baudRate: 115200 });
-        logMsg("Connected successfully.");
-        
-        esploader = new esploaderMod.ESPLoader(newPort, {
-          log: (...args) => logMsg(...args),
-          debug: (...args) => debugMsg(...args),
-          error: (...args) => errorMsg(...args),
-        });
-        
-        // Initialize the new connection
-        await esploader.initialize();
-        
-        esp32s2ReconnectInProgress = false;
-        logMsg("ESP32-S2 reconnection successful!");
+        reconnectBtn.addEventListener("click", handleReconnect);
+        return; // Exit early, wait for user action
       } else if (isElectron) {
-        // Electron (Desktop): Use Web Serial getPorts
+        // Electron (Desktop): Automatic reconnection with getPorts
+        // Wait for new port to appear
+        logMsg("Waiting for ESP32-S2 CDC port...");
+        
         const waitForNewPort = new Promise((resolve) => {
           const checkInterval = setInterval(() => {
             if (navigator.serial && navigator.serial.getPorts) {
