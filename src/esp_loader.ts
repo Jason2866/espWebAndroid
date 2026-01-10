@@ -89,13 +89,13 @@ export class ESPLoader extends EventTarget {
   private __isReconfiguring: boolean = false;
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
-  // Adaptive speed adjustment for flash read operations
-  // Start values depend on chip type (CDC vs USB-Serial adapter)
-  private __adaptiveBlockMultiplier: number = 1; // Will be set in initialize()
-  private __adaptiveMaxInFlightMultiplier: number = 1; // Will be set in initialize()
+  // Adaptive speed adjustment for flash read operations - DISABLED
+  // Using fixed conservative values that work reliably
+  private __adaptiveBlockMultiplier: number = 1;
+  private __adaptiveMaxInFlightMultiplier: number = 1;
   private __consecutiveSuccessfulChunks: number = 0;
   private __lastAdaptiveAdjustment: number = 0;
-  private __isCDCDevice: boolean = false; // Track if device is CDC (Native USB)
+  private __isCDCDevice: boolean = false;
 
   constructor(
     public port: SerialPort,
@@ -312,26 +312,9 @@ export class ESPLoader extends EventTarget {
           this._isESP32S2NativeUSB = true;
         }
 
-        // Detect CDC devices (Espressif Native USB) for adaptive speed adjustment
-        // ONLY for WebUSB (Android) - Desktop uses fixed optimal values
-        if (this.isWebUSB()) {
-          if (portInfo.usbVendorId === 0x303a) {
-            this._isCDCDevice = true;
-            // CDC devices: Start aggressive
-            this._adaptiveBlockMultiplier = 8; // 8 * 31 = 248 bytes
-            this._adaptiveMaxInFlightMultiplier = 16; // 16 * 31 = 496 bytes
-            this.logger.debug(
-              "[Adaptive] CDC device detected - starting with faster values",
-            );
-          } else {
-            this._isCDCDevice = false;
-            // USB-Serial adapters: Start conservative
-            this._adaptiveBlockMultiplier = 1; // 1 * 31 = 31 bytes
-            this._adaptiveMaxInFlightMultiplier = 1; // 1 * 31 = 31 bytes
-            this.logger.debug(
-              "[Adaptive] USB-Serial adapter detected - starting with conservative values",
-            );
-          }
+        // Detect CDC devices for readPacket optimization only
+        if (portInfo.usbVendorId === 0x303a) {
+          this._isCDCDevice = true;
         }
       }
 
@@ -2736,13 +2719,10 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            const maxTransferSize = (this.port as any).maxTransferSize || 128;
-            // CRITICAL!! WebUSB: Keep values as multiples of base for avoiding slip errors
-            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes with maxTransferSize=64
-
-            // ADAPTIVE: Use multipliers for dynamic adjustment
-            blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
-            maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+            // WebUSB (Android): Use conservative fixed values that work reliably
+            // These values have been tested and work with CH340, CP2102, CH343
+            blockSize = 31; // Conservative: 31 bytes per block
+            maxInFlight = 31; // Conservative: 31 bytes in flight
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
             const base = 63;
@@ -2751,20 +2731,9 @@ export class ESPLoader extends EventTarget {
           }
 
           if (retryCount === 0 && currentAddr === addr) {
-            if (this.isWebUSB()) {
-              // WebUSB: Show adaptive parameters
-              this.logger.debug(
-                `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-              );
-              this.logger.debug(
-                `[Adaptive] blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
-              );
-            } else {
-              // Desktop: Simple log without adaptive info
-              this.logger.debug(
-                `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-              );
-            }
+            this.logger.debug(
+              `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+            );
           }
 
           const pkt = pack(

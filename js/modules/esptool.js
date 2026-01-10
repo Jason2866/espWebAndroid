@@ -4754,13 +4754,13 @@ class ESPLoader extends EventTarget {
         this.__commandLock = Promise.resolve([0, []]);
         this.__isReconfiguring = false;
         this.__bootloaderActive = false; // Track if bootloader is already active
-        // Adaptive speed adjustment for flash read operations
-        // Start values depend on chip type (CDC vs USB-Serial adapter)
-        this.__adaptiveBlockMultiplier = 1; // Will be set in initialize()
-        this.__adaptiveMaxInFlightMultiplier = 1; // Will be set in initialize()
+        // Adaptive speed adjustment for flash read operations - DISABLED
+        // Using fixed conservative values that work reliably
+        this.__adaptiveBlockMultiplier = 1;
+        this.__adaptiveMaxInFlightMultiplier = 1;
         this.__consecutiveSuccessfulChunks = 0;
         this.__lastAdaptiveAdjustment = 0;
-        this.__isCDCDevice = false; // Track if device is CDC (Native USB)
+        this.__isCDCDevice = false;
         this.state_DTR = false;
         this.__writeChain = Promise.resolve();
         console.log("[ESP_LOADER] Constructor called, port type:", (_a = port === null || port === void 0 ? void 0 : port.constructor) === null || _a === void 0 ? void 0 : _a.name);
@@ -4942,23 +4942,9 @@ class ESPLoader extends EventTarget {
                 if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
                     this._isESP32S2NativeUSB = true;
                 }
-                // Detect CDC devices (Espressif Native USB) for adaptive speed adjustment
-                // ONLY for WebUSB (Android) - Desktop uses fixed optimal values
-                if (this.isWebUSB()) {
-                    if (portInfo.usbVendorId === 0x303a) {
-                        this._isCDCDevice = true;
-                        // CDC devices: Start aggressive
-                        this._adaptiveBlockMultiplier = 8; // 8 * 31 = 248 bytes
-                        this._adaptiveMaxInFlightMultiplier = 16; // 16 * 31 = 496 bytes
-                        this.logger.debug("[Adaptive] CDC device detected - starting with faster values");
-                    }
-                    else {
-                        this._isCDCDevice = false;
-                        // USB-Serial adapters: Start conservative
-                        this._adaptiveBlockMultiplier = 1; // 1 * 31 = 31 bytes
-                        this._adaptiveMaxInFlightMultiplier = 1; // 1 * 31 = 31 bytes
-                        this.logger.debug("[Adaptive] USB-Serial adapter detected - starting with conservative values");
-                    }
+                // Detect CDC devices for readPacket optimization only
+                if (portInfo.usbVendorId === 0x303a) {
+                    this._isCDCDevice = true;
                 }
             }
             // Don't await this promise so it doesn't block rest of method.
@@ -6948,12 +6934,10 @@ class ESPLoader extends EventTarget {
                     let blockSize;
                     let maxInFlight;
                     if (this.isWebUSB()) {
-                        const maxTransferSize = this.port.maxTransferSize || 128;
-                        // CRITICAL!! WebUSB: Keep values as multiples of base for avoiding slip errors
-                        const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes with maxTransferSize=64
-                        // ADAPTIVE: Use multipliers for dynamic adjustment
-                        blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
-                        maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
+                        // WebUSB (Android): Use conservative fixed values that work reliably
+                        // These values have been tested and work with CH340, CP2102, CH343
+                        blockSize = 31; // Conservative: 31 bytes per block
+                        maxInFlight = 31; // Conservative: 31 bytes in flight
                     }
                     else {
                         // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
@@ -6962,15 +6946,7 @@ class ESPLoader extends EventTarget {
                         maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
                     }
                     if (retryCount === 0 && currentAddr === addr) {
-                        if (this.isWebUSB()) {
-                            // WebUSB: Show adaptive parameters
-                            this.logger.debug(`[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
-                            this.logger.debug(`[Adaptive] blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`);
-                        }
-                        else {
-                            // Desktop: Simple log without adaptive info
-                            this.logger.debug(`[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
-                        }
+                        this.logger.debug(`[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`);
                     }
                     const pkt = pack("<IIII", currentAddr, chunkSize, blockSize, maxInFlight);
                     const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
