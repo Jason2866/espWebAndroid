@@ -2719,16 +2719,15 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            // WebUSB (Android):
-            blockSize = 31;
-            maxInFlight = 62;
+            // WebUSB (Android): Use values that work with USB transfer limits
+            // but are large enough for ESP stub to handle efficiently
+            blockSize = 256; // 256 bytes - reasonable for ESP
+            maxInFlight = 512; // 512 bytes - allows some pipelining
           } else {
-            // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
-            //            const base = 63;
-            //            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
-            //            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
-            blockSize = 0x1000; // 4096 bytes
-            maxInFlight = 0x4000; // 16384 bytes
+            // Web Serial (Desktop): Use values within stub limits
+            // CRITICAL: blockSize MUST be <= 4096 (FLASH_SECTOR_SIZE in stub)
+            blockSize = 0x1000; // 4096 bytes (maximum allowed by stub)
+            maxInFlight = 0x2000; // 8192 bytes
           }
 
           if (retryCount === 0 && currentAddr === addr) {
