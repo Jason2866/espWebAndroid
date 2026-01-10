@@ -88,7 +88,6 @@ export class ESPLoader extends EventTarget {
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
-  private __readLoopReady: Promise<void> = Promise.resolve(); // Promise that resolves when readLoop is ready
 
   // Adaptive speed adjustment for flash read operations - DISABLED
   // Using fixed conservative values that work reliably
@@ -517,29 +516,12 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Starting read loop");
     }
 
-    // Create a new promise that will resolve when readLoop is ready
-    let resolveReadLoopReady: () => void;
-    if (!this._parent) {
-      this.__readLoopReady = new Promise((resolve) => {
-        resolveReadLoopReady = resolve;
-      });
-    }
-
     this._reader = this.port.readable!.getReader();
 
     try {
       let keepReading = true;
-      let firstRead = true;
       while (keepReading) {
-        const readPromise = this._reader.read();
-
-        // Signal that readLoop is now ready AFTER first read() is called
-        if (firstRead && !this._parent) {
-          resolveReadLoopReady!();
-          firstRead = false;
-        }
-
-        const { value, done } = await readPromise;
+        const { value, done } = await this._reader.read();
         if (done) {
           this._reader.releaseLock();
           keepReading = false;
@@ -1805,14 +1787,11 @@ export class ESPLoader extends EventTarget {
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
-      // Restart Readloop BEFORE flushing to ensure it's running!!!
+      // Restart Readloop
       this.readLoop();
 
-      // Wait for readLoop to be fully ready (no race condition!)
-      await this.__readLoopReady;
-
-      // Clear buffer again
-      await this.flushSerialBuffers();
+      // DON'T flush buffers here! The buffer should be empty after port restart.
+      // Flushing here would delete valid data that arrives immediately after baudrate change.
     } catch (e) {
       this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
