@@ -2719,16 +2719,16 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            // WebUSB (Android): Probably not working orig. 31 / 31
-            blockSize = 0x1000; // 4096 bytes
-            maxInFlight = 0x2000; // 8192 bytes
+            // WebUSB (Android):
+            blockSize = 31;
+            maxInFlight = 62;
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
             //            const base = 63;
             //            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
             //            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
             blockSize = 0x1000; // 4096 bytes
-            maxInFlight = 0x4000; // 8192 bytes
+            maxInFlight = 0x4000; // 16384 bytes
           }
 
           if (retryCount === 0 && currentAddr === addr) {
