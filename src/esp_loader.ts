@@ -88,6 +88,7 @@ export class ESPLoader extends EventTarget {
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
+  private __readLoopReady: Promise<void> = Promise.resolve(); // Promise that resolves when readLoop is ready
 
   // Adaptive speed adjustment for flash read operations - DISABLED
   // Using fixed conservative values that work reliably
@@ -516,7 +517,20 @@ export class ESPLoader extends EventTarget {
       this.logger.debug("Starting read loop");
     }
 
+    // Create a new promise that will resolve when readLoop is ready
+    let resolveReadLoopReady: () => void;
+    if (!this._parent) {
+      this.__readLoopReady = new Promise((resolve) => {
+        resolveReadLoopReady = resolve;
+      });
+    }
+
     this._reader = this.port.readable!.getReader();
+
+    // Signal that readLoop is now ready
+    if (!this._parent) {
+      resolveReadLoopReady!();
+    }
 
     try {
       let keepReading = true;
@@ -1790,8 +1804,8 @@ export class ESPLoader extends EventTarget {
       // Restart Readloop BEFORE flushing to ensure it's running!!!
       this.readLoop();
 
-      // Wait a bit for readLoop to start
-      await sleep(50);
+      // Wait for readLoop to be fully ready (no race condition!)
+      await this.__readLoopReady;
 
       // Clear buffer again
       await this.flushSerialBuffers();
