@@ -90,10 +90,12 @@ export class ESPLoader extends EventTarget {
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
   // Adaptive speed adjustment for flash read operations
-  private __adaptiveBlockMultiplier: number = 8; // Start more aggressive (8 * 31 = 248 bytes)
-  private __adaptiveMaxInFlightMultiplier: number = 16; // Start more aggressive (16 * 31 = 496 bytes)
+  // Start values depend on chip type (CDC vs USB-Serial adapter)
+  private __adaptiveBlockMultiplier: number = 1; // Will be set in initialize()
+  private __adaptiveMaxInFlightMultiplier: number = 1; // Will be set in initialize()
   private __consecutiveSuccessfulChunks: number = 0;
   private __lastAdaptiveAdjustment: number = 0;
+  private __isCDCDevice: boolean = false; // Track if device is CDC (Native USB)
 
   constructor(
     public port: SerialPort,
@@ -221,6 +223,18 @@ export class ESPLoader extends EventTarget {
     }
   }
 
+  private get _isCDCDevice(): boolean {
+    return this._parent ? this._parent._isCDCDevice : this.__isCDCDevice;
+  }
+
+  private set _isCDCDevice(value: boolean) {
+    if (this._parent) {
+      this._parent._isCDCDevice = value;
+    } else {
+      this.__isCDCDevice = value;
+    }
+  }
+
   private detectUSBSerialChip(
     vendorId: number,
     productId: number,
@@ -296,6 +310,26 @@ export class ESPLoader extends EventTarget {
         // Detect ESP32-S2 Native USB
         if (portInfo.usbVendorId === 0x303a && portInfo.usbProductId === 0x2) {
           this._isESP32S2NativeUSB = true;
+        }
+
+        // Detect CDC devices (Espressif Native USB) for adaptive speed adjustment
+        // CDC devices can handle much higher block sizes than USB-Serial adapters
+        if (portInfo.usbVendorId === 0x303a) {
+          this._isCDCDevice = true;
+          // CDC devices: Start aggressive
+          this._adaptiveBlockMultiplier = 8; // 8 * 31 = 248 bytes
+          this._adaptiveMaxInFlightMultiplier = 16; // 16 * 31 = 496 bytes
+          this.logger.debug(
+            "[Adaptive] CDC device detected - starting with aggressive values",
+          );
+        } else {
+          this._isCDCDevice = false;
+          // USB-Serial adapters: Start conservative
+          this._adaptiveBlockMultiplier = 1; // 1 * 31 = 31 bytes
+          this._adaptiveMaxInFlightMultiplier = 1; // 1 * 31 = 31 bytes
+          this.logger.debug(
+            "[Adaptive] USB-Serial adapter detected - starting with conservative values",
+          );
         }
       }
 
@@ -2712,12 +2746,25 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = (this.port as any).maxTransferSize || 128;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
 
-              // Maximum safe multipliers based on ESP32-C3 CDC testing
-              // With baseBlockSize=31: 
-              // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable)
-              // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable)
-              const MAX_BLOCK_MULTIPLIER = 32;
-              const MAX_INFLIGHT_MULTIPLIER = 64;
+              // Maximum safe multipliers depend on device type
+              let MAX_BLOCK_MULTIPLIER: number;
+              let MAX_INFLIGHT_MULTIPLIER: number;
+
+              if (this._isCDCDevice) {
+                // CDC devices (Espressif Native USB): Can handle much higher values
+                // With baseBlockSize=31:
+                // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable on ESP32-C3)
+                // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable on ESP32-C3)
+                MAX_BLOCK_MULTIPLIER = 32;
+                MAX_INFLIGHT_MULTIPLIER = 64;
+              } else {
+                // USB-Serial adapters (CP2102, CH340, etc.): More conservative
+                // With baseBlockSize=31:
+                // - MAX_BLOCK: 31 * 8 = 248 bytes (safe for all adapters)
+                // - MAX_INFLIGHT: 31 * 8 = 248 bytes (safe for all adapters)
+                MAX_BLOCK_MULTIPLIER = 8;
+                MAX_INFLIGHT_MULTIPLIER = 8;
+              }
 
               let adjusted = false;
 
