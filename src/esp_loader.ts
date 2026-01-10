@@ -1387,20 +1387,30 @@ export class ESPLoader extends EventTarget {
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
    *
    * Two implementations:
-   * - CDC Devices (Native USB): Burst processing for high-speed transfers (Desktop & Android)
-   * - USB-Serial Adapters: Byte-by-byte with timeout checks (stable for CH340, CP2102, etc.)
+   * - Burst: CDC devices (Native USB) and CH343 - fast processing
+   * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable processing
    */
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
 
-    // Use burst processing for CDC devices (Native USB) on all platforms
-    // Use byte-by-byte for USB-Serial adapters (more stable)
-    const useBurstProcessing = this._isCDCDevice || this.isWebUSB();
+    // Determine which method to use based on device type
+    let useBurstProcessing = false;
+
+    if (this._isCDCDevice) {
+      // CDC devices (Native USB) always use burst processing
+      useBurstProcessing = true;
+    } else if (this.isWebUSB()) {
+      // WebUSB (Android): Only CH343 can use burst, others need byte-by-byte
+      const portInfo = this.port.getInfo();
+      const isCH343 =
+        portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
+      useBurstProcessing = isCH343;
+    }
 
     if (useBurstProcessing) {
       // Burst version: Process all available bytes in one pass for high-speed transfers
-      // Used for: CDC devices (all platforms) and all WebUSB devices
+      // Used for: CDC devices (all platforms) and CH343 on Android
       const startTime = Date.now();
 
       while (true) {
@@ -1474,7 +1484,7 @@ export class ESPLoader extends EventTarget {
       }
     } else {
       // Byte-by-byte version: Stable for USB-Serial adapters (CH340, CP2102, etc.)
-      // Used for: Non-CDC devices on Desktop Web Serial
+      // Used for: Non-CDC devices on Desktop and CH340/CP2102 on Android
       let readBytes: number[] = [];
       while (true) {
         const stamp = Date.now();
