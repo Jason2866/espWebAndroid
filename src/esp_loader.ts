@@ -1787,11 +1787,22 @@ export class ESPLoader extends EventTarget {
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
-      // Restart Readloop
+      // Restart Readloop (don't await - it runs forever)
       this.readLoop();
 
-      // DON'T flush buffers here! The buffer should be empty after port restart.
-      // Flushing here would delete valid data that arrives immediately after baudrate change.
+      // CRITICAL: Wait until readLoop has actually started
+      // Check that _reader is set (readLoop has called getReader())
+      const startTime = Date.now();
+      while (!this._reader && Date.now() - startTime < 1000) {
+        await sleep(10);
+      }
+
+      if (!this._reader) {
+        throw new Error("ReadLoop failed to start after port reconfiguration");
+      }
+
+      // Give readLoop a bit more time to be ready for incoming data
+      await sleep(50);
     } catch (e) {
       this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
