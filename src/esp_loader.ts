@@ -1384,13 +1384,14 @@ export class ESPLoader extends EventTarget {
     let inEscape = false;
     const startTime = Date.now();
 
-    // ALWAYS log that we're using this routine (not just in debug mode)
-    this.logger.log("[CH340-Android] Using optimized readPacket routine");
-
     while (true) {
       // Check global timeout
       if (Date.now() - startTime > timeout) {
         const waitingFor = partialPacket === null ? "header" : "content";
+        // Log buffer state before timeout
+        this.logger.log(
+          `[CH340-Android] Timeout! Buffer length: ${this._inputBuffer.length}, Waiting for: ${waitingFor}`,
+        );
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
 
@@ -1398,6 +1399,13 @@ export class ESPLoader extends EventTarget {
       if (this._inputBuffer.length === 0) {
         await sleep(1);
         continue;
+      }
+
+      // Log when we receive data (only once per packet)
+      if (partialPacket === null) {
+        this.logger.log(
+          `[CH340-Android] Received data! Buffer length: ${this._inputBuffer.length}`,
+        );
       }
 
       // Process ALL available bytes (identical to burst version)
