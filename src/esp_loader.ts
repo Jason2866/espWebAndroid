@@ -1387,15 +1387,20 @@ export class ESPLoader extends EventTarget {
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
    *
    * Two implementations:
-   * - Desktop (Web Serial): Byte-by-byte with timeout checks (stable for CH340)
-   * - WebUSB (Android): Burst processing for high-speed transfers
+   * - CDC Devices (Native USB): Burst processing for high-speed transfers (Desktop & Android)
+   * - USB-Serial Adapters: Byte-by-byte with timeout checks (stable for CH340, CP2102, etc.)
    */
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
 
-    if (this.isWebUSB()) {
-      // WebUSB version: Process all available bytes in one pass for burst transfers
+    // Use burst processing for CDC devices (Native USB) on all platforms
+    // Use byte-by-byte for USB-Serial adapters (more stable)
+    const useBurstProcessing = this._isCDCDevice || this.isWebUSB();
+
+    if (useBurstProcessing) {
+      // Burst version: Process all available bytes in one pass for high-speed transfers
+      // Used for: CDC devices (all platforms) and all WebUSB devices
       const startTime = Date.now();
 
       while (true) {
@@ -1468,7 +1473,8 @@ export class ESPLoader extends EventTarget {
         }
       }
     } else {
-      // Desktop (Web Serial) version: Byte-by-byte with timeout checks (stable for CH340)
+      // Byte-by-byte version: Stable for USB-Serial adapters (CH340, CP2102, etc.)
+      // Used for: Non-CDC devices on Desktop Web Serial
       let readBytes: number[] = [];
       while (true) {
         const stamp = Date.now();
