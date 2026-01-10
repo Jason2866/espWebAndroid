@@ -1385,33 +1385,32 @@ export class ESPLoader extends EventTarget {
    * @name readPacket
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
+   *
+   * WebUSB version: Processes all available bytes in one pass for better burst transfer handling
    */
-
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    let readBytes: number[] = [];
+    const startTime = Date.now();
+
     while (true) {
-      const stamp = Date.now();
-      readBytes = [];
-      while (Date.now() - stamp < timeout) {
-        if (this._inputBuffer.length > 0) {
-          readBytes.push(this._inputBuffer.shift()!);
-          break;
-        } else {
-          // Reduced sleep time for faster response during high-speed transfers
-          await sleep(1);
-        }
-      }
-      if (readBytes.length == 0) {
+      // Check timeout
+      if (Date.now() - startTime > timeout) {
         const waitingFor = partialPacket === null ? "header" : "content";
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
-      if (this.debug)
-        this.logger.debug(
-          "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
-        );
-      for (const b of readBytes) {
+
+      // If no data available, wait a bit
+      if (this._inputBuffer.length === 0) {
+        await sleep(1);
+        continue;
+      }
+
+      // Process all available bytes without going back to outer loop
+      // This is critical for handling high-speed burst transfers
+      while (this._inputBuffer.length > 0) {
+        const b = this._inputBuffer.shift()!;
+
         if (partialPacket === null) {
           // waiting for packet header
           if (b == 0xc0) {
@@ -2606,11 +2605,11 @@ export class ESPLoader extends EventTarget {
     // For Web Serial (Desktop), use larger chunks for better performance
     let CHUNK_SIZE: number;
     if (this.isWebUSB()) {
-      // WebUSB: Use smaller chunks (4KB) to avoid SLIP timeout issues
-      CHUNK_SIZE = 4 * 0x1000; // 4KB = 16384 bytes
+      // WebUSB: Use smaller chunks to avoid SLIP timeout issues
+      CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
     } else {
-      // Web Serial: Use larger chunks (16KB) for better performance
-      CHUNK_SIZE = 16 * 0x1000; // 16KB = 65536 bytes
+      // Web Serial: Use larger chunks for better performance
+      CHUNK_SIZE = 0x40 * 0x1000; // 256KB = 262144 bytes
     }
 
     let allData = new Uint8Array(0);
