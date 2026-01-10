@@ -2890,6 +2890,10 @@ export class ESPLoader extends EventTarget {
             throw new Error("Failed to read memory: " + res);
           }
 
+          this.logger.debug(
+            `ESP_READ_FLASH command successful, waiting for ${chunkSize} bytes of data...`,
+          );
+
           while (resp.length < chunkSize) {
             // Read a SLIP packet
             let packet: number[];
