@@ -2688,7 +2688,7 @@ export class ESPLoader extends EventTarget {
       CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
     } else {
       // Web Serial: Use larger chunks for better performance
-      CHUNK_SIZE = 0x10 * 0x1000;
+      CHUNK_SIZE = 0x80 * 0x1000;
     }
 
     let allData = new Uint8Array(0);
@@ -2719,15 +2719,16 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            // WebUSB (Android): Use conservative fixed values that work reliably
-            // These values have been tested and work with CH340, CP2102, CH343
-            blockSize = 31; // Conservative: 31 bytes per block
-            maxInFlight = 31; // Conservative: 31 bytes in flight
+            // WebUSB (Android): Probably not working orig. 31 / 31
+            blockSize = 0x1000; // 4096 bytes
+            maxInFlight = 0x2000; // 8192 bytes
           } else {
             // Web Serial (Mac/Desktop): Use multiples of 63 for consistency
-            const base = 63;
-            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
-            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
+            //            const base = 63;
+            //            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
+            //            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
+            blockSize = 0x1000; // 4096 bytes
+            maxInFlight = 0x4000; // 8192 bytes
           }
 
           if (retryCount === 0 && currentAddr === addr) {
