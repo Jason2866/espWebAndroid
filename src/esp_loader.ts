@@ -1365,6 +1365,110 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name readPacketCH340Android
+   * Optimized SLIP packet reader specifically for Android WebUSB with CH340/CP2102
+   *
+   * This version reads in batches (up to 64 bytes) with short timeouts to balance
+   * speed and stability for problematic USB-Serial adapters on Android.
+   *
+   * Key differences from standard readPacket:
+   * - Reads up to 64 bytes per iteration (one USB packet)
+   * - Uses 10ms batch timeout instead of full timeout per byte
+   * - Processes bytes immediately without extra buffering
+   *
+   * @param timeout - Maximum time to wait for complete packet in milliseconds
+   * @returns Array of bytes representing one SLIP packet (without framing bytes)
+   */
+  async readPacketCH340Android(timeout: number): Promise<number[]> {
+    let partialPacket: number[] | null = null;
+    let inEscape = false;
+    const startTime = Date.now();
+
+    while (true) {
+      // Check global timeout
+      if (Date.now() - startTime > timeout) {
+        const waitingFor = partialPacket === null ? "header" : "content";
+        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+      }
+
+      // Wait for data with short batch timeout (10ms)
+      const batchStartTime = Date.now();
+      const batchTimeout = 10;
+
+      while (
+        this._inputBuffer.length === 0 &&
+        Date.now() - batchStartTime < batchTimeout
+      ) {
+        await sleep(1);
+      }
+
+      // If no data after batch timeout, loop back to check global timeout
+      if (this._inputBuffer.length === 0) {
+        continue;
+      }
+
+      // Read up to 64 bytes (one USB packet) at once
+      const maxBytesPerBatch = 64;
+      let bytesRead = 0;
+
+      while (this._inputBuffer.length > 0 && bytesRead < maxBytesPerBatch) {
+        const b = this._inputBuffer.shift()!;
+        bytesRead++;
+
+        if (partialPacket === null) {
+          // waiting for packet header
+          if (b == 0xc0) {
+            partialPacket = [];
+          } else {
+            if (this.debug) {
+              this.logger.debug("Read invalid data: " + toHex(b));
+              this.logger.debug(
+                "Remaining data in serial buffer: " +
+                  hexFormatter(this._inputBuffer),
+              );
+            }
+            throw new SlipReadError(
+              "Invalid head of packet (" + toHex(b) + ")",
+            );
+          }
+        } else if (inEscape) {
+          // part-way through escape sequence
+          inEscape = false;
+          if (b == 0xdc) {
+            partialPacket.push(0xc0);
+          } else if (b == 0xdd) {
+            partialPacket.push(0xdb);
+          } else {
+            if (this.debug) {
+              this.logger.debug("Read invalid data: " + toHex(b));
+              this.logger.debug(
+                "Remaining data in serial buffer: " +
+                  hexFormatter(this._inputBuffer),
+              );
+            }
+            throw new SlipReadError(
+              "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+            );
+          }
+        } else if (b == 0xdb) {
+          // start of escape sequence
+          inEscape = true;
+        } else if (b == 0xc0) {
+          // end of packet
+          if (this.debug)
+            this.logger.debug(
+              "Received full packet: " + hexFormatter(partialPacket),
+            );
+          return partialPacket;
+        } else {
+          // normal byte in packet
+          partialPacket.push(b);
+        }
+      }
+    }
+  }
+
+  /**
    * @name readPacket
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
@@ -1374,6 +1478,20 @@ export class ESPLoader extends EventTarget {
    * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
   async readPacket(timeout: number): Promise<number[]> {
+    // Special handling for Android WebUSB with CH340/CP2102
+    // Use optimized batch reading for these problematic adapters
+    if (this.isWebUSB() && !this._isCDCDevice) {
+      const portInfo = this.port.getInfo();
+      const isCH343 =
+        portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
+
+      // CH340, CP2102, and other non-CH343 USB-Serial adapters on Android
+      if (!isCH343) {
+        return await this.readPacketCH340Android(timeout);
+      }
+    }
+
+    // Standard readPacket for Desktop and CDC devices
     let partialPacket: number[] | null = null;
     let inEscape = false;
 
