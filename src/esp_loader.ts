@@ -1787,7 +1787,7 @@ export class ESPLoader extends EventTarget {
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
-      // Restart Readloop BEFORE flushing to ensure it's running
+      // Restart Readloop BEFORE flushing to ensure it's running!!!
       this.readLoop();
 
       // Wait a bit for readLoop to start
