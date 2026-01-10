@@ -1275,19 +1275,8 @@ export class ESPLoader extends EventTarget {
     // Serialize command execution to prevent lock contention
     const executeCommand = async (): Promise<[number, number[]]> => {
       timeout = Math.min(timeout, MAX_TIMEOUT);
-      this.logger.debug(
-        `[CheckCommand] Sending command 0x${opcode.toString(16)} with ${buffer.length} bytes (timeout: ${timeout}ms)`,
-      );
-
       await this.sendCommand(opcode, buffer, checksum);
-      this.logger.debug(
-        `[CheckCommand] Command 0x${opcode.toString(16)} sent, waiting for response`,
-      );
-
       const [value, responseData] = await this.getResponse(opcode, timeout);
-      this.logger.debug(
-        `[CheckCommand] Command 0x${opcode.toString(16)} response received: value=${value}, data length=${responseData?.length || 0}`,
-      );
 
       if (responseData === null) {
         throw new Error("Didn't get enough status bytes");
@@ -1367,10 +1356,6 @@ export class ESPLoader extends EventTarget {
       ...buffer,
     ]);
 
-    this.logger.debug(
-      `[SendCommand] Opcode: 0x${opcode.toString(16)}, Payload: ${buffer.length} bytes, Total packet: ${packet.length} bytes`,
-    );
-
     if (this.debug) {
       this.logger.debug(
         `Writing ${packet.length} byte${packet.length == 1 ? "" : "s"}:`,
@@ -1378,7 +1363,6 @@ export class ESPLoader extends EventTarget {
       );
     }
     await this.writeToStream(packet);
-    this.logger.debug(`[SendCommand] Packet written to stream`);
   }
 
   /**
@@ -1404,25 +1388,16 @@ export class ESPLoader extends EventTarget {
     while (true) {
       // Check global timeout
       if (Date.now() - startTime > timeout) {
-        const waitingFor = partialPacket === null ? "header" : "content";
-        // Log buffer state before timeout
-        this.logger.log(
-          `[CH340-Android] Timeout! Buffer length: ${this._inputBuffer.length}, Waiting for: ${waitingFor}`,
+        throw new SlipReadError(
+          "Timed out waiting for packet " +
+            (partialPacket === null ? "header" : "content"),
         );
-        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
 
       // If no data available, wait a bit (same as burst version)
       if (this._inputBuffer.length === 0) {
         await sleep(1);
         continue;
-      }
-
-      // Log when we receive data (only once per packet)
-      if (partialPacket === null) {
-        this.logger.log(
-          `[CH340-Android] Received data! Buffer length: ${this._inputBuffer.length}`,
-        );
       }
 
       // Process ALL available bytes (identical to burst version)
@@ -1492,10 +1467,6 @@ export class ESPLoader extends EventTarget {
    * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
   async readPacket(timeout: number): Promise<number[]> {
-    this.logger.debug(
-      `[ReadPacket] Starting to read packet (timeout: ${timeout}ms, buffer: ${this._inputBuffer.length} bytes)`,
-    );
-
     // Special handling for Android WebUSB with CH340/CP2102
     // Use optimized batch reading for these problematic adapters
     if (this.isWebUSB() && !this._isCDCDevice) {
@@ -1505,12 +1476,9 @@ export class ESPLoader extends EventTarget {
 
       // CH340, CP2102, and other non-CH343 USB-Serial adapters on Android
       if (!isCH343) {
-        this.logger.debug(`[ReadPacket] Using CH340Android implementation`);
         return await this.readPacketCH340Android(timeout);
       }
     }
-
-    this.logger.debug(`[ReadPacket] Using standard implementation`);
 
     // Standard readPacket for Desktop and CDC devices
     let partialPacket: number[] | null = null;
@@ -1692,48 +1660,25 @@ export class ESPLoader extends EventTarget {
     opcode: number,
     timeout = DEFAULT_TIMEOUT,
   ): Promise<[number, number[]]> {
-    this.logger.debug(
-      `[GetResponse] Waiting for response to opcode 0x${opcode.toString(16)} (timeout: ${timeout}ms)`,
-    );
-
     for (let i = 0; i < 100; i++) {
       const packet = await this.readPacket(timeout);
 
-      this.logger.debug(
-        `[GetResponse] Received packet: ${packet.length} bytes`,
-      );
-
       if (packet.length < 8) {
-        this.logger.debug(
-          `[GetResponse] Packet too short (${packet.length} < 8), retrying...`,
-        );
         continue;
       }
 
       const [resp, opRet, , val] = unpack("<BBHI", packet.slice(0, 8));
-      this.logger.debug(
-        `[GetResponse] Decoded: resp=${resp}, opcode=0x${opRet.toString(16)}, value=${val}`,
-      );
 
       if (resp != 1) {
-        this.logger.debug(
-          `[GetResponse] Invalid response byte (${resp} != 1), retrying...`,
-        );
         continue;
       }
       const data = packet.slice(8);
       if (opcode == null || opRet == opcode) {
-        this.logger.debug(
-          `[GetResponse] Valid response for opcode 0x${opcode.toString(16)}, returning`,
-        );
         return [val, data];
       }
       if (data[0] != 0 && data[1] == ROM_INVALID_RECV_MSG) {
         // Unsupported command can result in more than one error response
         // Use drainInputBuffer for CP210x compatibility on Windows
-        this.logger.debug(
-          `[GetResponse] Invalid command response, draining buffer`,
-        );
         await this.drainInputBuffer(200);
         throw new Error(`Invalid (unsupported) command ${toHex(opcode)}`);
       }
@@ -1753,20 +1698,23 @@ export class ESPLoader extends EventTarget {
   }
 
   async setBaudrate(baud: number) {
-    this.logger.log(`[SetBaudrate] Changing baudrate to ${baud}`);
-
     if (this.chipFamily == CHIP_FAMILY_ESP8266) {
       throw new Error("Changing baud rate is not supported on the ESP8266");
+    }
+
+    // CRITICAL: Skip baudrate change on WebUSB (Android)
+    // The stub does not respond correctly after baudrate change on WebUSB with CH340/CP2102
+    if (this.isWebUSB()) {
+      this.logger.log(
+        `WebUSB detected - skipping baudrate change for stability`,
+      );
+      return;
     }
 
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
       const buffer = pack("<II", baud, this.IS_STUB ? ESP_ROM_BAUD : 0);
-      this.logger.log(
-        `[SetBaudrate] Sending ESP_CHANGE_BAUDRATE command to stub`,
-      );
       await this.checkCommand(ESP_CHANGE_BAUDRATE, buffer);
-      this.logger.log(`[SetBaudrate] Stub acknowledged baudrate change`);
     } catch (e) {
       this.logger.error(`Baudrate change error: ${e}`);
       throw new Error(
@@ -1781,33 +1729,7 @@ export class ESPLoader extends EventTarget {
     }
 
     // Wait for port to be ready after baudrate change
-    this.logger.log(
-      `[SetBaudrate] Waiting ${SYNC_TIMEOUT}ms for port to stabilize`,
-    );
     await sleep(SYNC_TIMEOUT);
-    this.logger.log(`[SetBaudrate] Port stabilization complete`);
-
-    // CRITICAL: Test if stub is still responding after baudrate change
-    if (this.IS_STUB) {
-      this.logger.log(
-        `[SetBaudrate] Testing stub communication at new baudrate...`,
-      );
-      try {
-        // Try a simple READ_REG command to verify communication
-        const testAddr = 0x3ff00050; // DPORT_PRO_CACHE_CTRL_REG
-        const pkt = pack("<I", testAddr);
-        await this.checkCommand(ESP_READ_REG, pkt, undefined, 1000);
-        this.logger.log(`[SetBaudrate] Stub communication test successful`);
-      } catch (e) {
-        this.logger.error(`[SetBaudrate] Stub communication test FAILED: ${e}`);
-        this.logger.error(
-          `[SetBaudrate] Stub may have crashed or baudrate change failed`,
-        );
-        throw new Error(
-          `Stub not responding after baudrate change to ${baud}: ${e}`,
-        );
-      }
-    }
 
     // Track current baudrate for reconnect
     if (this._parent) {
@@ -1843,13 +1765,11 @@ export class ESPLoader extends EventTarget {
 
       // Block new writes during port close/open
       this._isReconfiguring = true;
-      this.logger.log(`[ReconfigurePort] Blocking new writes`);
 
       // Release persistent writer before closing
       if (this._writer) {
         try {
           this._writer.releaseLock();
-          this.logger.log(`[ReconfigurePort] Writer released`);
         } catch (err) {
           this.logger.debug(`Writer release error during reconfigure: ${err}`);
         }
@@ -1860,21 +1780,16 @@ export class ESPLoader extends EventTarget {
       // reader.cancel() causes the Promise returned by the read() operation running on
       // the readLoop to return immediately with { value: undefined, done: true } and thus
       // breaking the loop and exiting readLoop();
-      this.logger.log(`[ReconfigurePort] Cancelling reader and closing port`);
       await this._reader?.cancel();
       await this.port.close();
-      this.logger.log(`[ReconfigurePort] Port closed`);
 
       // Reopen Port
-      this.logger.log(`[ReconfigurePort] Opening port with baudrate ${baud}`);
       await this.port.open({ baudRate: baud });
-      this.logger.log(`[ReconfigurePort] Port opened successfully`);
 
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
       // Restart Readloop (don't await - it runs forever)
-      this.logger.log(`[ReconfigurePort] Starting readLoop`);
       this.readLoop();
 
       // CRITICAL: Wait until readLoop has actually started
@@ -1887,13 +1802,9 @@ export class ESPLoader extends EventTarget {
       if (!this._reader) {
         throw new Error("ReadLoop failed to start after port reconfiguration");
       }
-      this.logger.log(
-        `[ReconfigurePort] ReadLoop started (reader acquired in ${Date.now() - startTime}ms)`,
-      );
 
       // Give readLoop a bit more time to be ready for incoming data
       await sleep(50);
-      this.logger.log(`[ReconfigurePort] Port reconfiguration complete`);
     } catch (e) {
       this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
@@ -2962,16 +2873,6 @@ export class ESPLoader extends EventTarget {
             maxInFlight = 0x2000; // 8192 bytes
           }
 
-          if (retryCount === 0 && currentAddr === addr) {
-            this.logger.debug(
-              `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-            );
-          }
-
-          this.logger.debug(
-            `Sending ESP_READ_FLASH command: addr=0x${currentAddr.toString(16)}, chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-          );
-
           const pkt = pack(
             "<IIII",
             currentAddr,
@@ -2984,10 +2885,6 @@ export class ESPLoader extends EventTarget {
           if (res != 0) {
             throw new Error("Failed to read memory: " + res);
           }
-
-          this.logger.debug(
-            `ESP_READ_FLASH command successful, waiting for ${chunkSize} bytes of data...`,
-          );
 
           while (resp.length < chunkSize) {
             // Read a SLIP packet
