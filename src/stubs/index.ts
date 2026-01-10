@@ -25,7 +25,7 @@ interface LoadedStub {
   data_start: number;
 }
 
-interface Stub {
+export interface Stub {
   text: number[];
   data: number[];
   text_start: number;
