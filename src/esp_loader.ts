@@ -1386,79 +1386,160 @@ export class ESPLoader extends EventTarget {
    * Generator to read SLIP packets from a serial port.
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
    *
-   * WebUSB version: Processes all available bytes in one pass for better burst transfer handling
+   * Two implementations:
+   * - Desktop (Web Serial): Byte-by-byte with timeout checks (stable for CH340)
+   * - WebUSB (Android): Burst processing for high-speed transfers
    */
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    const startTime = Date.now();
 
-    while (true) {
-      // Check timeout
-      if (Date.now() - startTime > timeout) {
-        const waitingFor = partialPacket === null ? "header" : "content";
-        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
-      }
+    if (this.isWebUSB()) {
+      // WebUSB version: Process all available bytes in one pass for burst transfers
+      const startTime = Date.now();
 
-      // If no data available, wait a bit
-      if (this._inputBuffer.length === 0) {
-        await sleep(1);
-        continue;
-      }
+      while (true) {
+        // Check timeout
+        if (Date.now() - startTime > timeout) {
+          const waitingFor = partialPacket === null ? "header" : "content";
+          throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+        }
 
-      // Process all available bytes without going back to outer loop
-      // This is critical for handling high-speed burst transfers
-      while (this._inputBuffer.length > 0) {
-        const b = this._inputBuffer.shift()!;
+        // If no data available, wait a bit
+        if (this._inputBuffer.length === 0) {
+          await sleep(1);
+          continue;
+        }
 
-        if (partialPacket === null) {
-          // waiting for packet header
-          if (b == 0xc0) {
-            partialPacket = [];
-          } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
+        // Process all available bytes without going back to outer loop
+        // This is critical for handling high-speed burst transfers
+        while (this._inputBuffer.length > 0) {
+          const b = this._inputBuffer.shift()!;
+
+          if (partialPacket === null) {
+            // waiting for packet header
+            if (b == 0xc0) {
+              partialPacket = [];
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid head of packet (" + toHex(b) + ")",
               );
             }
-            throw new SlipReadError(
-              "Invalid head of packet (" + toHex(b) + ")",
-            );
-          }
-        } else if (inEscape) {
-          // part-way through escape sequence
-          inEscape = false;
-          if (b == 0xdc) {
-            partialPacket.push(0xc0);
-          } else if (b == 0xdd) {
-            partialPacket.push(0xdb);
-          } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
+          } else if (inEscape) {
+            // part-way through escape sequence
+            inEscape = false;
+            if (b == 0xdc) {
+              partialPacket.push(0xc0);
+            } else if (b == 0xdd) {
+              partialPacket.push(0xdb);
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
               );
             }
-            throw new SlipReadError(
-              "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
-            );
+          } else if (b == 0xdb) {
+            // start of escape sequence
+            inEscape = true;
+          } else if (b == 0xc0) {
+            // end of packet
+            if (this.debug)
+              this.logger.debug(
+                "Received full packet: " + hexFormatter(partialPacket),
+              );
+            return partialPacket;
+          } else {
+            // normal byte in packet
+            partialPacket.push(b);
           }
-        } else if (b == 0xdb) {
-          // start of escape sequence
-          inEscape = true;
-        } else if (b == 0xc0) {
-          // end of packet
-          if (this.debug)
-            this.logger.debug(
-              "Received full packet: " + hexFormatter(partialPacket),
-            );
-          return partialPacket;
-        } else {
-          // normal byte in packet
-          partialPacket.push(b);
+        }
+      }
+    } else {
+      // Desktop (Web Serial) version: Byte-by-byte with timeout checks (stable for CH340)
+      let readBytes: number[] = [];
+      while (true) {
+        const stamp = Date.now();
+        readBytes = [];
+        while (Date.now() - stamp < timeout) {
+          if (this._inputBuffer.length > 0) {
+            readBytes.push(this._inputBuffer.shift()!);
+            break;
+          } else {
+            // Reduced sleep time for faster response during high-speed transfers
+            await sleep(1);
+          }
+        }
+        if (readBytes.length == 0) {
+          const waitingFor = partialPacket === null ? "header" : "content";
+          throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+        }
+        if (this.debug)
+          this.logger.debug(
+            "Read " + readBytes.length + " bytes: " + hexFormatter(readBytes),
+          );
+        for (const b of readBytes) {
+          if (partialPacket === null) {
+            // waiting for packet header
+            if (b == 0xc0) {
+              partialPacket = [];
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid head of packet (" + toHex(b) + ")",
+              );
+            }
+          } else if (inEscape) {
+            // part-way through escape sequence
+            inEscape = false;
+            if (b == 0xdc) {
+              partialPacket.push(0xc0);
+            } else if (b == 0xdd) {
+              partialPacket.push(0xdb);
+            } else {
+              if (this.debug) {
+                this.logger.debug("Read invalid data: " + toHex(b));
+                this.logger.debug(
+                  "Remaining data in serial buffer: " +
+                    hexFormatter(this._inputBuffer),
+                );
+              }
+              throw new SlipReadError(
+                "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+              );
+            }
+          } else if (b == 0xdb) {
+            // start of escape sequence
+            inEscape = true;
+          } else if (b == 0xc0) {
+            // end of packet
+            if (this.debug)
+              this.logger.debug(
+                "Received full packet: " + hexFormatter(partialPacket),
+              );
+            return partialPacket;
+          } else {
+            // normal byte in packet
+            partialPacket.push(b);
+          }
         }
       }
     }
@@ -2609,7 +2690,7 @@ export class ESPLoader extends EventTarget {
       CHUNK_SIZE = 0x4 * 0x1000; // 4KB = 16384 bytes
     } else {
       // Web Serial: Use larger chunks for better performance
-      CHUNK_SIZE = 0x40 * 0x1000; // 256KB = 262144 bytes
+      CHUNK_SIZE = 0x10 * 0x1000;
     }
 
     let allData = new Uint8Array(0);
@@ -2655,12 +2736,18 @@ export class ESPLoader extends EventTarget {
           }
 
           if (retryCount === 0 && currentAddr === addr) {
-            this.logger.debug(
-              `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-            );
             if (this.isWebUSB()) {
+              // WebUSB: Show adaptive parameters
+              this.logger.debug(
+                `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+              );
               this.logger.debug(
                 `[Adaptive] blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+              );
+            } else {
+              // Desktop: Simple log without adaptive info
+              this.logger.debug(
+                `[ReadFlash] chunkSize=${chunkSize}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
               );
             }
           }
