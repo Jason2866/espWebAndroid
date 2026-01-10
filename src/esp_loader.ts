@@ -1702,14 +1702,9 @@ export class ESPLoader extends EventTarget {
       throw new Error("Changing baud rate is not supported on the ESP8266");
     }
 
-    // CRITICAL: Skip baudrate change on WebUSB (Android)
-    // The stub does not respond correctly after baudrate change on WebUSB with CH340/CP2102
-    if (this.isWebUSB()) {
-      this.logger.log(
-        `WebUSB detected - skipping baudrate change for stability`,
-      );
-      return;
-    }
+    // CRITICAL: On WebUSB (Android), we need to reload the stub after baudrate change
+    // because the stub doesn't respond correctly after baudrate change
+    const needsStubReload = this.isWebUSB() && this.IS_STUB;
 
     try {
       // Send ESP_ROM_BAUD(115200) as the old one if running STUB otherwise 0
@@ -1730,6 +1725,46 @@ export class ESPLoader extends EventTarget {
 
     // Wait for port to be ready after baudrate change
     await sleep(SYNC_TIMEOUT);
+
+    // CRITICAL: Reload stub on WebUSB after baudrate change
+    if (needsStubReload) {
+      this.logger.log(`Reloading stub at new baudrate ${baud}...`);
+      try {
+        const stub = await getStubCode(this.chipFamily, this.chipRevision);
+        if (stub) {
+          const ramBlock = USB_RAM_BLOCK;
+          
+          // Upload stub code
+          for (const field of ["text", "data"] as const) {
+            const fieldData = stub[field];
+            const offset = stub[`${field}_start` as "text_start" | "data_start"];
+            const length = fieldData.length;
+            const blocks = Math.floor((length + ramBlock - 1) / ramBlock);
+            await this.memBegin(length, blocks, ramBlock, offset);
+            for (const seq of Array(blocks).keys()) {
+              const fromOffs = seq * ramBlock;
+              let toOffs = fromOffs + ramBlock;
+              if (toOffs > length) {
+                toOffs = length;
+              }
+              await this.memBlock(fieldData.slice(fromOffs, toOffs), seq);
+            }
+          }
+          await this.memFinish(stub.entry);
+          
+          // Wait for "OHAI" response
+          const p = await this.readPacket(500);
+          const pChar = String.fromCharCode(...p);
+          if (pChar != "OHAI") {
+            throw new Error("Failed to start stub. Unexpected response: " + pChar);
+          }
+          this.logger.log(`Stub reloaded successfully at ${baud} baud`);
+        }
+      } catch (e) {
+        this.logger.error(`Failed to reload stub: ${e}`);
+        throw new Error(`Failed to reload stub after baudrate change: ${e}`);
+      }
+    }
 
     // Track current baudrate for reconnect
     if (this._parent) {
