@@ -1387,8 +1387,8 @@ export class ESPLoader extends EventTarget {
    * Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
    *
    * Two implementations:
-   * - Burst: CDC devices (Native USB) and CH343 - fast processing
-   * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable processing
+   * - Burst: CDC devices (Native USB) and CH343 - very fast processing
+   * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
   async readPacket(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
@@ -1400,8 +1400,8 @@ export class ESPLoader extends EventTarget {
     if (this._isCDCDevice) {
       // CDC devices (Native USB) always use burst processing
       useBurstProcessing = true;
-    } else if (this.isWebUSB()) {
-      // WebUSB (Android): Only CH343 can use burst, others need byte-by-byte
+    } else {
+      // Only CH343 (CDC/ACM supported) can use burst, others need byte-by-byte
       const portInfo = this.port.getInfo();
       const isCH343 =
         portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
@@ -1409,8 +1409,8 @@ export class ESPLoader extends EventTarget {
     }
 
     if (useBurstProcessing) {
-      // Burst version: Process all available bytes in one pass for high-speed transfers
-      // Used for: CDC devices (all platforms) and CH343 on Android
+      // Burst version: Process all available bytes in one pass for ultra-high-speed transfers
+      // Used for: CDC devices (all platforms) and CH343
       const startTime = Date.now();
 
       while (true) {
@@ -1483,8 +1483,7 @@ export class ESPLoader extends EventTarget {
         }
       }
     } else {
-      // Byte-by-byte version: Stable for USB-Serial adapters (CH340, CP2102, etc.)
-      // Used for: Non-CDC devices on Desktop and CH340/CP2102 on Android
+      // Byte-by-byte version: Stable for non CDC USB-Serial adapters (CH340, CP2102, etc.)
       let readBytes: number[] = [];
       while (true) {
         const stamp = Date.now();
