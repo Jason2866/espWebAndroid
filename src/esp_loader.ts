@@ -1384,10 +1384,8 @@ export class ESPLoader extends EventTarget {
     let inEscape = false;
     const startTime = Date.now();
 
-    // Debug: Log that we're using the optimized CH340 Android routine
-    if (this.debug) {
-      this.logger.debug("[CH340-Android] Using optimized readPacket routine");
-    }
+    // ALWAYS log that we're using this routine (not just in debug mode)
+    this.logger.log("[CH340-Android] Using optimized readPacket routine");
 
     while (true) {
       // Check global timeout
@@ -1396,24 +1394,13 @@ export class ESPLoader extends EventTarget {
         throw new SlipReadError("Timed out waiting for packet " + waitingFor);
       }
 
-      // Wait for data with short batch timeout (10ms)
-      const batchStartTime = Date.now();
-      const batchTimeout = 50;
-
-      while (
-        this._inputBuffer.length === 0 &&
-        Date.now() - batchStartTime < batchTimeout
-      ) {
-        await sleep(1);
-      }
-
-      // If no data after batch timeout, loop back to check global timeout
+      // If no data available, wait a bit (same as burst version)
       if (this._inputBuffer.length === 0) {
+        await sleep(1);
         continue;
       }
 
-      // Process ALL available bytes (like burst version)
-      // This is faster than limiting to 64 bytes per iteration
+      // Process ALL available bytes (identical to burst version)
       while (this._inputBuffer.length > 0) {
         const b = this._inputBuffer.shift()!;
 
@@ -2842,16 +2829,21 @@ export class ESPLoader extends EventTarget {
             // WebUSB (Android): Different values based on adapter type
             const portInfo = this.port.getInfo();
             const isCH343 =
-              portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
-            
+              portInfo.usbVendorId === 0x1a86 &&
+              portInfo.usbProductId === 0x55d3;
+
             if (isCH343 || this._isCDCDevice) {
               // CH343 and CDC devices can handle larger values
               blockSize = 256; // 256 bytes
               maxInFlight = 512; // 512 bytes
             } else {
-              // CH340, CP2102: Use very conservative values
-              blockSize = 64; // 64 bytes - one USB packet
-              maxInFlight = 128; // 128 bytes - minimal pipelining
+              // CH340, CP2102: CRITICAL calculation based on maxTransferSize
+              // Formula: blockSize = (maxTransferSize - 2) / 2
+              // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
+              // This accounts for SLIP framing (0xC0) and worst-case escaping
+              const maxTransferSize = 64; // USB packet size
+              blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
+              maxInFlight = blockSize * 2; // 62 bytes - allow 2 blocks in flight
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
