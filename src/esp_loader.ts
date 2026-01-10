@@ -2598,7 +2598,18 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    let CHUNK_SIZE = 16 * 0x1000;
+    // Chunk size: Amount of data to request from ESP in one command
+    // For WebUSB (Android), use smaller chunks to avoid timeouts and buffer issues
+    // For Web Serial (Desktop), use larger chunks for better performance
+    let CHUNK_SIZE: number;
+    if (this.isWebUSB()) {
+      // WebUSB: Use smaller chunks (4KB) to avoid SLIP timeout issues
+      CHUNK_SIZE = 4 * 0x1000; // 4KB = 16384 bytes
+    } else {
+      // Web Serial: Use larger chunks (16KB) for better performance
+      CHUNK_SIZE = 16 * 0x1000; // 16KB = 65536 bytes
+    }
+
     let allData = new Uint8Array(0);
     let currentAddr = addr;
     let remainingSize = size;
