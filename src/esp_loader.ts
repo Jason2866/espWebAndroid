@@ -527,15 +527,19 @@ export class ESPLoader extends EventTarget {
 
     this._reader = this.port.readable!.getReader();
 
-    // Signal that readLoop is now ready
-    if (!this._parent) {
-      resolveReadLoopReady!();
-    }
-
     try {
       let keepReading = true;
+      let firstRead = true;
       while (keepReading) {
-        const { value, done } = await this._reader.read();
+        const readPromise = this._reader.read();
+
+        // Signal that readLoop is now ready AFTER first read() is called
+        if (firstRead && !this._parent) {
+          resolveReadLoopReady!();
+          firstRead = false;
+        }
+
+        const { value, done } = await readPromise;
         if (done) {
           this._reader.releaseLock();
           keepReading = false;
