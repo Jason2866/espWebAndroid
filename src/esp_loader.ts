@@ -1384,6 +1384,11 @@ export class ESPLoader extends EventTarget {
     let inEscape = false;
     const startTime = Date.now();
 
+    // Debug: Log that we're using the optimized CH340 Android routine
+    if (this.debug) {
+      this.logger.debug("[CH340-Android] Using optimized readPacket routine");
+    }
+
     while (true) {
       // Check global timeout
       if (Date.now() - startTime > timeout) {
@@ -1393,7 +1398,7 @@ export class ESPLoader extends EventTarget {
 
       // Wait for data with short batch timeout (10ms)
       const batchStartTime = Date.now();
-      const batchTimeout = 10;
+      const batchTimeout = 50;
 
       while (
         this._inputBuffer.length === 0 &&
@@ -1407,13 +1412,10 @@ export class ESPLoader extends EventTarget {
         continue;
       }
 
-      // Read up to 64 bytes (one USB packet) at once
-      const maxBytesPerBatch = 64;
-      let bytesRead = 0;
-
-      while (this._inputBuffer.length > 0 && bytesRead < maxBytesPerBatch) {
+      // Process ALL available bytes (like burst version)
+      // This is faster than limiting to 64 bytes per iteration
+      while (this._inputBuffer.length > 0) {
         const b = this._inputBuffer.shift()!;
-        bytesRead++;
 
         if (partialPacket === null) {
           // waiting for packet header
@@ -2837,10 +2839,20 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            // WebUSB (Android): Use values that work with USB transfer limits
-            // but are large enough for ESP stub to handle efficiently
-            blockSize = 256; // 256 bytes - reasonable for ESP
-            maxInFlight = 512; // 512 bytes - allows some pipelining
+            // WebUSB (Android): Different values based on adapter type
+            const portInfo = this.port.getInfo();
+            const isCH343 =
+              portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
+            
+            if (isCH343 || this._isCDCDevice) {
+              // CH343 and CDC devices can handle larger values
+              blockSize = 256; // 256 bytes
+              maxInFlight = 512; // 512 bytes
+            } else {
+              // CH340, CP2102: Use very conservative values
+              blockSize = 64; // 64 bytes - one USB packet
+              maxInFlight = 128; // 128 bytes - minimal pipelining
+            }
           } else {
             // Web Serial (Desktop): Use values within stub limits
             // CRITICAL: blockSize MUST be <= 4096 (FLASH_SECTOR_SIZE in stub)
