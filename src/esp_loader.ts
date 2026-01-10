@@ -313,23 +313,25 @@ export class ESPLoader extends EventTarget {
         }
 
         // Detect CDC devices (Espressif Native USB) for adaptive speed adjustment
-        // CDC devices can handle much higher block sizes than USB-Serial adapters
-        if (portInfo.usbVendorId === 0x303a) {
-          this._isCDCDevice = true;
-          // CDC devices: Start aggressive
-          this._adaptiveBlockMultiplier = 8; // 8 * 31 = 248 bytes
-          this._adaptiveMaxInFlightMultiplier = 16; // 16 * 31 = 496 bytes
-          this.logger.debug(
-            "[Adaptive] CDC device detected - starting with aggressive values",
-          );
-        } else {
-          this._isCDCDevice = false;
-          // USB-Serial adapters: Start conservative
-          this._adaptiveBlockMultiplier = 1; // 1 * 31 = 31 bytes
-          this._adaptiveMaxInFlightMultiplier = 1; // 1 * 31 = 31 bytes
-          this.logger.debug(
-            "[Adaptive] USB-Serial adapter detected - starting with conservative values",
-          );
+        // ONLY for WebUSB (Android) - Desktop uses fixed optimal values
+        if (this.isWebUSB()) {
+          if (portInfo.usbVendorId === 0x303a) {
+            this._isCDCDevice = true;
+            // CDC devices: Start aggressive
+            this._adaptiveBlockMultiplier = 8; // 8 * 31 = 248 bytes
+            this._adaptiveMaxInFlightMultiplier = 16; // 16 * 31 = 496 bytes
+            this.logger.debug(
+              "[Adaptive] CDC device detected - starting with faster values",
+            );
+          } else {
+            this._isCDCDevice = false;
+            // USB-Serial adapters: Start conservative
+            this._adaptiveBlockMultiplier = 1; // 1 * 31 = 31 bytes
+            this._adaptiveMaxInFlightMultiplier = 1; // 1 * 31 = 31 bytes
+            this.logger.debug(
+              "[Adaptive] USB-Serial adapter detected - starting with conservative values",
+            );
+          }
         }
       }
 
