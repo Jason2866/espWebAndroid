@@ -1787,11 +1787,14 @@ export class ESPLoader extends EventTarget {
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
+      // Restart Readloop BEFORE flushing to ensure it's running
+      this.readLoop();
+
+      // Wait a bit for readLoop to start
+      await sleep(50);
+
       // Clear buffer again
       await this.flushSerialBuffers();
-
-      // Restart Readloop
-      this.readLoop();
     } catch (e) {
       this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
