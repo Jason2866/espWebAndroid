@@ -1787,6 +1787,21 @@ export class ESPLoader extends EventTarget {
     await sleep(SYNC_TIMEOUT);
     this.logger.log(`[SetBaudrate] Port stabilization complete`);
 
+    // CRITICAL: For WebUSB (Android), reload stub after baudrate change
+    // The stub may not work correctly after baudrate change on some USB-Serial adapters
+    if (this.isWebUSB() && this.IS_STUB) {
+      this.logger.log(
+        `[SetBaudrate] WebUSB detected - reloading stub after baudrate change...`,
+      );
+      try {
+        await this.runStub();
+        this.logger.log(`[SetBaudrate] Stub reloaded successfully`);
+      } catch (e) {
+        this.logger.error(`[SetBaudrate] Failed to reload stub: ${e}`);
+        throw new Error(`Failed to reload stub after baudrate change: ${e}`);
+      }
+    }
+
     // Track current baudrate for reconnect
     if (this._parent) {
       this._parent._currentBaudRate = baud;
