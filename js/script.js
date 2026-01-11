@@ -1084,8 +1084,6 @@ async function clickReadFlash() {
     const esptoolMod = await window.esptoolPackage;
     const fsType = esptoolMod.detectFilesystemFromImage(data, chipName);
     
-    logMsg(`Filesystem detection: ${fsType} (chipName: ${chipName})`);
-    
     if (fsType !== 'unknown') {
       logMsg(`Detected ${fsType} filesystem in read data`);
       
