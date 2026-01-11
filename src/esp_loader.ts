@@ -312,8 +312,12 @@ export class ESPLoader extends EventTarget {
           this._isESP32S2NativeUSB = true;
         }
 
-        // Detect CDC devices for readPacket optimization only
-        if (portInfo.usbVendorId === 0x303a) {
+        // Detect CDC devices for adaptive speed adjustment
+        // Espressif Native USB (VID: 0x303a) or CH343 (VID: 0x1a86, PID: 0x55d3)
+        if (
+          portInfo.usbVendorId === 0x303a ||
+          (portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3)
+        ) {
           this._isCDCDevice = true;
         }
       }
