@@ -60,7 +60,7 @@ import {
   ESP32P4_EFUSE_BLOCK1_ADDR,
   SlipReadError,
 } from "./const";
-import { getStubCode, Stub } from "./stubs";
+import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
 // @ts-expect-error pako ESM module doesn't have proper type definitions
 import { deflate } from "pako/dist/pako.esm.mjs";
@@ -88,11 +88,6 @@ export class ESPLoader extends EventTarget {
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
   private __bootloaderActive: boolean = false; // Track if bootloader is already active
-  private __loadedStub?: Stub; // Store loaded stub for potential reload
-
-  private get _loadedStub(): Stub | undefined {
-    return this._parent ? this._parent.__loadedStub : this.__loadedStub;
-  }
 
   // Adaptive speed adjustment for flash read operations - DISABLED
   // Using fixed conservative values that work reliably
@@ -1727,59 +1722,6 @@ export class ESPLoader extends EventTarget {
     // Wait for port to be ready after baudrate change
     await sleep(SYNC_TIMEOUT);
 
-    // Reload stub after baudrate change (Android/WebUSB only)
-    // On Android, the ESP stub doesn't respond after baudrate change, so we reload it
-    if (this.isWebUSB() && this.IS_STUB && this._loadedStub) {
-      this.logger.log(`Reloading stub at new baudrate ${baud}...`);
-      try {
-        const stub = this._loadedStub;
-        const ramBlock = USB_RAM_BLOCK;
-
-        // Upload stub code
-        for (const field of ["text", "data"] as const) {
-          const fieldData = stub[field];
-          const offset = stub[`${field}_start` as "text_start" | "data_start"];
-          const length = fieldData.length;
-          const blocks = Math.floor((length + ramBlock - 1) / ramBlock);
-          // Call parent's memBegin to avoid stub validation in EspStubLoader
-          await ESPLoader.prototype.memBegin.call(
-            this,
-            length,
-            blocks,
-            ramBlock,
-            offset,
-          );
-          for (const seq of Array(blocks).keys()) {
-            const fromOffs = seq * ramBlock;
-            let toOffs = fromOffs + ramBlock;
-            if (toOffs > length) {
-              toOffs = length;
-            }
-            // Call parent's memBlock to avoid any overrides
-            await ESPLoader.prototype.memBlock.call(
-              this,
-              fieldData.slice(fromOffs, toOffs),
-              seq,
-            );
-          }
-        }
-        await this.memFinish(stub.entry);
-
-        // Wait for "OHAI" response
-        const p = await this.readPacket(500);
-        const pChar = String.fromCharCode(...p);
-        if (pChar != "OHAI") {
-          throw new Error(
-            "Failed to start stub. Unexpected response: " + pChar,
-          );
-        }
-        this.logger.log(`Stub reloaded successfully at ${baud} baud`);
-      } catch (e) {
-        this.logger.error(`Failed to reload stub: ${e}`);
-        throw new Error(`Failed to reload stub after baudrate change: ${e}`);
-      }
-    }
-
     // Track current baudrate for reconnect
     if (this._parent) {
       this._parent._currentBaudRate = baud;
@@ -1812,6 +1754,28 @@ export class ESPLoader extends EventTarget {
         this.logger.debug(`Pending write error during reconfigure: ${err}`);
       }
 
+      // WebUSB: Use setBaudRate() instead of close/reopen
+      if (this.isWebUSB()) {
+        this.logger.log(
+          `[WebUSB] Changing baudrate to ${baud} without closing port...`,
+        );
+
+        // Check if port has setBaudRate method
+        if (typeof (this.port as any).setBaudRate === "function") {
+          await (this.port as any).setBaudRate(baud);
+          this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
+
+          // Give the chip time to adjust to new baudrate
+          await sleep(100);
+          return;
+        } else {
+          this.logger.log(
+            "[WebUSB] setBaudRate() not available, falling back to close/reopen",
+          );
+        }
+      }
+
+      // Web Serial or fallback: Close and reopen port
       // Block new writes during port close/open
       this._isReconfiguring = true;
 
@@ -2434,9 +2398,6 @@ export class ESPLoader extends EventTarget {
       );
       return this as unknown as EspStubLoader;
     }
-
-    // Store stub for potential reload after baudrate change
-    this.__loadedStub = stub;
 
     // We're transferring over USB, right?
     const ramBlock = USB_RAM_BLOCK;

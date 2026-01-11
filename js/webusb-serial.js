@@ -541,6 +541,92 @@ class WebUSBSerial {
         }
     }
 
+    /**
+     * Change baudrate after port is already open
+     * This is needed for ESP stub loader which changes baudrate after uploading stub
+     * NOTE: Only needed for vendor-specific chips (CP2102, CH340)
+     * CDC devices (CH343, ESP32-S2/S3/C3 Native USB) handle baudrate automatically
+     */
+    async setBaudRate(baudRate) {
+        if (!this.device) {
+            throw new Error('Device not open');
+        }
+
+        const vid = this.device.vendorId;
+        const pid = this.device.productId;
+
+        this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
+
+        // CP2102 (Silicon Labs VID: 0x10c4)
+        if (vid === 0x10c4) {
+            const baudrateValue = Math.floor(0x384000 / baudRate);
+            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
+            await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0x01, // SET_BAUDRATE
+                value: baudrateValue,
+                index: 0x00
+            });
+            this._log('[WebUSB CP2102] Baudrate changed successfully');
+        }
+        // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
+        else if (vid === 0x1a86 && pid !== 0x55d3) {
+            // CH340 baudrate calculation (from Linux kernel driver)
+            // CH341_BAUDBASE_FACTOR = 1532620800
+            // CH341_BAUDBASE_DIVMAX = 3
+            const CH341_BAUDBASE_FACTOR = 1532620800;
+            const CH341_BAUDBASE_DIVMAX = 3;
+            
+            let factor = Math.floor(CH341_BAUDBASE_FACTOR / baudRate);
+            let divisor = CH341_BAUDBASE_DIVMAX;
+            
+            // Reduce factor if too large
+            while (factor > 0xfff0 && divisor > 0) {
+                factor >>= 3;
+                divisor--;
+            }
+            
+            if (factor > 0xfff0) {
+                throw new Error(`Baudrate ${baudRate} not supported by CH340`);
+            }
+            
+            factor = 0x10000 - factor;
+            const a = (factor & 0xff00) | divisor;
+            const b = factor & 0xff;
+            
+            this._log(`[WebUSB CH340] Setting baudrate ${baudRate} (a=0x${a.toString(16)}, b=0x${b.toString(16)})...`);
+            
+            // CH340 uses request 0x9A to set baudrate
+            await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0x9A, // CH340 SET_BAUDRATE
+                value: 0x1312, // Fixed value for baudrate setting
+                index: a
+            });
+            
+            // Second control transfer with b value
+            await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0x9A,
+                value: 0x0f2c, // Fixed value
+                index: b
+            });
+            
+            this._log('[WebUSB CH340] Baudrate changed successfully');
+        }
+        // CDC devices (CH343, ESP32 Native USB) - no action needed
+        // They handle baudrate changes automatically
+        else {
+            this._log(`[WebUSB CDC] Baudrate change handled automatically by device`);
+        }
+
+        // Wait for baudrate change to take effect
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
     get readable() {
         return this.readableStream;
     }
