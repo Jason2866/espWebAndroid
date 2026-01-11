@@ -1478,41 +1478,11 @@ export class ESPLoader extends EventTarget {
    * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
   async readPacket(timeout: number): Promise<number[]> {
-    // TESTING: Disable special CH340Android handling to test normal readPacket with CH340
-    // Special handling for Android WebUSB with CH340/CP2102
-    // Use optimized batch reading for these problematic adapters
-    /*
-    if (this.isWebUSB() && !this._isCDCDevice) {
-      const portInfo = this.port.getInfo();
-      const isCH343 =
-        portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
-
-      // CH340, CP2102, and other non-CH343 USB-Serial adapters on Android
-      if (!isCH343) {
-        return await this.readPacketCH340Android(timeout);
-      }
-    }
-    */
-
-    // Standard readPacket for Desktop and CDC devices
     let partialPacket: number[] | null = null;
     let inEscape = false;
 
-    // Determine which method to use based on device type
-    let useBurstProcessing = false;
-
+    // CDC devices use burst processing, non-CDC use byte-by-byte
     if (this._isCDCDevice) {
-      // CDC devices (Native USB) always use burst processing
-      useBurstProcessing = true;
-    } else {
-      // Only CH343 (CDC/ACM supported) can use burst, others need byte-by-byte
-      const portInfo = this.port.getInfo();
-      const isCH343 =
-        portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
-      useBurstProcessing = isCH343;
-    }
-
-    if (useBurstProcessing) {
       // Burst version: Process all available bytes in one pass for ultra-high-speed transfers
       // Used for: CDC devices (all platforms) and CH343
       const startTime = Date.now();
@@ -2829,14 +2799,23 @@ export class ESPLoader extends EventTarget {
 
     // Initialize adaptive speed multipliers for WebUSB devices
     if (this.isWebUSB()) {
-      // TESTING: Start with conservative values for CH340
-      // blockSize=31 (1 * 31), maxInFlight=62 (2 * 31)
-      this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes
-      this._adaptiveMaxInFlightMultiplier = 2; // maxInFlight = 62 bytes
-      this._consecutiveSuccessfulChunks = 0;
-      this.logger.log(
-        `[Adaptive] Initialized for testing: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
-      );
+      if (this._isCDCDevice) {
+        // CDC devices (CH343): Start with maximum, adaptive adjustment enabled
+        this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
+        this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes
+        this._consecutiveSuccessfulChunks = 0;
+        this.logger.log(
+          `[Adaptive] CDC device - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+        );
+      } else {
+        // Non-CDC devices (CH340, CP2102): Fixed values, no adaptive adjustment
+        this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes (fixed)
+        this._adaptiveMaxInFlightMultiplier = 1; // maxInFlight = 31 bytes (fixed)
+        this._consecutiveSuccessfulChunks = 0;
+        this.logger.log(
+          `[Adaptive] Non-CDC device - Fixed values: blockSize=31, maxInFlight=31`,
+        );
+      }
     }
 
     // Chunk size: Amount of data to request from ESP in one command
@@ -3000,10 +2979,9 @@ export class ESPLoader extends EventTarget {
 
           chunkSuccess = true;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Gradually increase speed after successful chunks
-          // blockSize maximum: 248 bytes (8 * 31)
-          // maxInFlight maximum: 248 bytes (8 * 31)
-          if (this.isWebUSB() && retryCount === 0) {
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // Non-CDC devices (CH340, CP2102) stay at fixed blockSize=31, maxInFlight=31
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
             // After 2 consecutive successful chunks, increase speed gradually
@@ -3054,8 +3032,9 @@ export class ESPLoader extends EventTarget {
         } catch (err) {
           retryCount++;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Only reduce if we're NOT already at minimum
-          if (this.isWebUSB() && retryCount === 1) {
+          // ADAPTIVE SPEED ADJUSTMENT: Only for CDC devices
+          // Non-CDC devices stay at fixed values
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
             // Only reduce if we're above minimum
             if (
               this._adaptiveBlockMultiplier > 1 ||
