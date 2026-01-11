@@ -1761,14 +1761,18 @@ export class ESPLoader extends EventTarget {
         this.logger.debug(`Pending write error during reconfigure: ${err}`);
       }
 
-      // WebUSB: Use setBaudRate() instead of close/reopen
+      // WebUSB: Check if we should use setBaudRate() or close/reopen
       if (this.isWebUSB()) {
-        this.logger.log(
-          `[WebUSB] Changing baudrate to ${baud} without closing port...`,
-        );
+        const portInfo = this.port.getInfo();
+        const isCH343 =
+          portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
 
-        // Check if port has setBaudRate method
-        if (typeof (this.port as any).setBaudRate === "function") {
+        // CH343 is a CDC device and needs close/reopen like Web Serial
+        // Other non-CDC chips (CH340, CP2102, FTDI) use setBaudRate()
+        if (!isCH343 && typeof (this.port as any).setBaudRate === "function") {
+          this.logger.log(
+            `[WebUSB] Changing baudrate to ${baud} without closing port...`,
+          );
           await (this.port as any).setBaudRate(baud);
           this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
 
@@ -1777,12 +1781,12 @@ export class ESPLoader extends EventTarget {
           return;
         } else {
           this.logger.log(
-            "[WebUSB] setBaudRate() not available, falling back to close/reopen",
+            `[WebUSB] Using close/reopen for baudrate change (CDC device)`,
           );
         }
       }
 
-      // Web Serial or fallback: Close and reopen port
+      // Web Serial or CDC devices (CH343): Close and reopen port
       // Block new writes during port close/open
       this._isReconfiguring = true;
 

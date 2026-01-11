@@ -790,11 +790,8 @@ class WebUSBSerial {
             
             this._log('[WebUSB CH340] Baudrate changed successfully');
         }
-        // CDC devices (CH343, ESP32 Native USB) - no action needed
-        // They handle baudrate changes automatically
-        else {
-            this._log(`[WebUSB CDC] Baudrate change handled automatically by device`);
-        }
+        // CDC devices (CH343, ESP32 Native USB) - no action needed in setBaudRate()
+        // They are handled by close/reopen in esp_loader.ts
 
         // Wait for baudrate change to take effect
         await new Promise(resolve => setTimeout(resolve, 50));
