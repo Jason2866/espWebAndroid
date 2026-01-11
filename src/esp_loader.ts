@@ -2972,7 +2972,8 @@ export class ESPLoader extends EventTarget {
           chunkSuccess = true;
 
           // ADAPTIVE SPEED ADJUSTMENT: Increase speed on successful chunks (WebUSB only)
-          if (this.isWebUSB() && retryCount === 0) {
+          // DISABLED for non-CDC chips - they are limited by USB packet size
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
             // After 2 consecutive successful chunks, try to increase speed (faster ramp-up)
@@ -2980,25 +2981,13 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = (this.port as any).maxTransferSize || 128;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
 
-              // Maximum safe multipliers depend on device type
-              let MAX_BLOCK_MULTIPLIER: number;
-              let MAX_INFLIGHT_MULTIPLIER: number;
-
-              if (this._isCDCDevice) {
-                // CDC devices (Espressif Native USB): Can handle much higher values
-                // With baseBlockSize=31:
-                // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable on ESP32-C3)
-                // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable on ESP32-C3)
-                MAX_BLOCK_MULTIPLIER = 32;
-                MAX_INFLIGHT_MULTIPLIER = 64;
-              } else {
-                // USB-Serial adapters (CP2102, CH340, etc.): More conservative
-                // With baseBlockSize=31:
-                // - MAX_BLOCK: 31 * 8 = 248 bytes (safe for all adapters)
-                // - MAX_INFLIGHT: 31 * 8 = 248 bytes (safe for all adapters)
-                MAX_BLOCK_MULTIPLIER = 8;
-                MAX_INFLIGHT_MULTIPLIER = 8;
-              }
+              // Maximum safe multipliers for CDC devices
+              // CDC devices (Espressif Native USB): Can handle much higher values
+              // With baseBlockSize=31:
+              // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable on ESP32-C3)
+              // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable on ESP32-C3)
+              const MAX_BLOCK_MULTIPLIER = 32;
+              const MAX_INFLIGHT_MULTIPLIER = 64;
 
               let adjusted = false;
 
@@ -3038,8 +3027,9 @@ export class ESPLoader extends EventTarget {
         } catch (err) {
           retryCount++;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Reduce speed on errors (WebUSB only)
-          if (this.isWebUSB() && retryCount === 1) {
+          // ADAPTIVE SPEED ADJUSTMENT: Reduce speed on errors (CDC devices only)
+          // Non-CDC chips stay at fixed blockSize=31, maxInFlight=31
+          if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
             // Only adjust on first retry to avoid over-correction
             const maxTransferSize = (this.port as any).maxTransferSize || 128;
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
