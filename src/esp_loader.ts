@@ -631,7 +631,7 @@ export class ESPLoader extends EventTarget {
   // ============================================================================
 
   async setRTSWebUSB(state: boolean) {
-    console.log("[ESP_LOADER] setRTSWebUSB called:", state);
+    this.logger.debug("[ESP_LOADER] setRTSWebUSB called:", state);
     await (this.port as any).setSignals({ requestToSend: state });
     // Work-around for adapters on Windows/Android using the usbser.sys driver:
     // generate a dummy change to DTR so that the set-control-line-state
@@ -641,13 +641,13 @@ export class ESPLoader extends EventTarget {
   }
 
   async setDTRWebUSB(state: boolean) {
-    console.log("[ESP_LOADER] setDTRWebUSB called:", state);
+    this.logger.debug("[ESP_LOADER] setDTRWebUSB called:", state);
     this.state_DTR = state;
     await (this.port as any).setSignals({ dataTerminalReady: state });
   }
 
   async setDTRandRTSWebUSB(dtr: boolean, rts: boolean) {
-    console.log(
+    this.logger.debug(
       `[ESP_LOADER] setDTRandRTSWebUSB called: DTR=${dtr}, RTS=${rts}`,
     );
     this.state_DTR = dtr;

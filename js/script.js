@@ -432,9 +432,6 @@ async function clickConnect() {
       toggleUIConnected(false);
       espStub = undefined;
       
-      // Store the old device reference
-      const oldDevice = esploader.port.device;
-      
       try {
         // Close the port first
         await esploader.port.close();
@@ -512,44 +509,6 @@ async function clickConnect() {
   currentChipName = esploader.chipName;
 
   espStub = await esploader.runStub();
-  
-  // FIX for Android WebUSB SLIP errors:
-  // Set smaller block size for WebUSB
-  if (isAndroid && espStub && espStub.transport && espStub.transport.device) {
-    // Read maxTransferSize from WebUSBSerial device (centrally defined there)
-    const maxTransferSize = espStub.transport.device.maxTransferSize || 64;
-    
-    // Formula: blockSize = (maxTransferSize - 2) / 2
-    // -2 for SLIP frame delimiters, /2 for worst-case escape sequences
-    const blockSize = Math.floor((maxTransferSize - 2) / 2);
-    
-    logMsg(`[Android/WebUSB] Setting flash read block size to ${blockSize} bytes (maxTransferSize=${maxTransferSize})`);
-    
-    // Patch all possible block size properties
-    let patchedCount = 0;
-    if (espStub.transport.FLASH_READ_SIZE !== undefined) {
-      espStub.transport.FLASH_READ_SIZE = blockSize;
-      patchedCount++;
-    }
-    if (espStub.flashReadSize !== undefined) {
-      espStub.flashReadSize = blockSize;
-      patchedCount++;
-    }
-    if (espStub.FLASH_READ_SIZE !== undefined) {
-      espStub.FLASH_READ_SIZE = blockSize;
-      patchedCount++;
-    }
-    if (espStub.transport.flashReadSize !== undefined) {
-      espStub.transport.flashReadSize = blockSize;
-      patchedCount++;
-    }
-    
-    if (patchedCount === 0) {
-      logMsg(`[WARNING] Could not find any blockSize property to patch!`);
-    } else {
-      logMsg(`[Android/WebUSB] Successfully patched ${patchedCount} blockSize properties`);
-    }
-  }
   
   toggleUIConnected(true);
   toggleUIToolbar(true);

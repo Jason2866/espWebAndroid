@@ -79,11 +79,9 @@ done
 ```bash
 # Starte einen lokalen Server
 npm run develop
-# oder
-npx serve .
 ```
 
-Öffne in Chrome: `http://localhost:3000`
+Öffne in Chrome: `http://localhost:5004`
 
 ### PWA-Funktionalität prüfen:
 1. Chrome DevTools öffnen (F12)
@@ -101,7 +99,7 @@ npx serve .
 ### GitHub Pages (kostenlos):
 ```bash
 # In package.json hinzufügen:
-"homepage": "https://deinusername.github.io/esp32tool",
+"homepage": "https://deinusername.github.io/espWebAndroid",
 "scripts": {
   "deploy": "gh-pages -d ."
 }
@@ -158,7 +156,6 @@ Erstelle `offline.html` und füge sie zu `CORE_ASSETS` hinzu.
 - **WebUSB benötigt USB OTG** auf Android
 - **Chrome 61+** erforderlich
 - Service Worker funktioniert nicht im Inkognito-Modus
-- **Baudrate:** Funktioniert, aber Erfolg hängt vom USB-Chip ab (siehe WEBUSB-BAUDRATE.md)
 
 ## 🐛 Troubleshooting:
 
