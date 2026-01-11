@@ -49,13 +49,11 @@
           : "./js/modules/esptool.js"
       );
     </script>
-    <script src="js/script.js?v=2.2.1" type="module" defer></script>
+    <script src="js/script.js?v=2.0.0" type="module" defer></script>
     
     <!-- PWA Service Worker Registration - DISABLED FOR TESTING -->
     <script>
-      // Service Worker disabled for testing - always load fresh files
-      console.log('[PWA] Service Worker DISABLED for testing');
-      /*
+      // Service Worker for PWA functionality
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
@@ -77,7 +75,6 @@
             });
         });
       }
-      */
     </script>
   </head>
   <body>
