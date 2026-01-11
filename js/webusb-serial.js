@@ -283,6 +283,135 @@ class WebUSBSerial {
             } catch (e) {
                 console.warn('[WebUSB CP2102] Initialization error:', e.message);
             }
+        }
+        // FTDI-specific initialization sequence
+        else if (this.device.vendorId === 0x0403) {
+            try {
+                // Step 1: Reset device
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x00, // SIO_RESET
+                    value: 0x00,   // Reset
+                    index: 0x00
+                });
+
+                // Step 2: Set flow control to none
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x02, // SIO_SET_FLOW_CTRL
+                    value: 0x00,   // No flow control
+                    index: 0x00
+                });
+
+                // Step 3: Set data characteristics (8N1)
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x04, // SIO_SET_DATA
+                    value: 0x0008, // 8 data bits, no parity, 1 stop bit
+                    index: 0x00
+                });
+
+                // Step 4: Set baudrate
+                const baseClock = 3000000; // 48MHz / 16
+                let divisor = baseClock / baudRate;
+                const integerPart = Math.floor(divisor);
+                const fractionalPart = divisor - integerPart;
+                
+                let subInteger;
+                if (fractionalPart < 0.0625) subInteger = 0;
+                else if (fractionalPart < 0.1875) subInteger = 1;
+                else if (fractionalPart < 0.3125) subInteger = 2;
+                else if (fractionalPart < 0.4375) subInteger = 3;
+                else if (fractionalPart < 0.5625) subInteger = 4;
+                else if (fractionalPart < 0.6875) subInteger = 5;
+                else if (fractionalPart < 0.8125) subInteger = 6;
+                else subInteger = 7;
+                
+                const value = (integerPart & 0xFF) | ((subInteger & 0x07) << 14) | (((integerPart >> 8) & 0x3F) << 8);
+                const index = (integerPart >> 14) & 0x03;
+                
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x03, // SIO_SET_BAUD_RATE
+                    value: value,
+                    index: index
+                });
+
+                // Step 5: Set DTR/RTS (modem control)
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x01, // SIO_MODEM_CTRL
+                    value: 0x0303, // DTR=1, RTS=1
+                    index: 0x00
+                });
+            } catch (e) {
+                console.warn('[WebUSB FTDI] Initialization error:', e.message);
+            }
+        }
+        // CH340-specific initialization (VID: 0x1a86, but not CH343 PID: 0x55d3)
+        else if (this.device.vendorId === 0x1a86 && this.device.productId !== 0x55d3) {
+            try {
+                // Step 1: Initialize CH340
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0xA1, // CH340 INIT
+                    value: 0x0000,
+                    index: 0x0000
+                });
+
+                // Step 2: Set baudrate
+                const CH341_BAUDBASE_FACTOR = 1532620800;
+                const CH341_BAUDBASE_DIVMAX = 3;
+                
+                let factor = Math.floor(CH341_BAUDBASE_FACTOR / baudRate);
+                let divisor = CH341_BAUDBASE_DIVMAX;
+                
+                while (factor > 0xfff0 && divisor > 0) {
+                    factor >>= 3;
+                    divisor--;
+                }
+                
+                if (factor > 0xfff0) {
+                    throw new Error(`Baudrate ${baudRate} not supported by CH340`);
+                }
+                
+                factor = 0x10000 - factor;
+                const a = (factor & 0xff00) | divisor;
+                const b = factor & 0xff;
+                
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x9A,
+                    value: 0x1312,
+                    index: a
+                });
+                
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0x9A,
+                    value: 0x0f2c,
+                    index: b
+                });
+
+                // Step 3: Set handshake (DTR/RTS)
+                await this.device.controlTransferOut({
+                    requestType: 'vendor',
+                    recipient: 'device',
+                    request: 0xA4, // CH340 SET_HANDSHAKE
+                    value: ~((1 << 5) | (1 << 6)), // DTR=1, RTS=1 (inverted)
+                    index: 0x0000
+                });
+            } catch (e) {
+                console.warn('[WebUSB CH340] Initialization error:', e.message);
+            }
         } else {
             // Standard CDC/ACM initialization for other chips
             try {
@@ -544,7 +673,7 @@ class WebUSBSerial {
     /**
      * Change baudrate after port is already open
      * This is needed for ESP stub loader which changes baudrate after uploading stub
-     * NOTE: Only needed for vendor-specific chips (CP2102, CH340)
+     * NOTE: Only needed for vendor-specific chips (CP2102, CH340, FTDI)
      * CDC devices (CH343, ESP32-S2/S3/C3 Native USB) handle baudrate automatically
      */
     async setBaudRate(baudRate) {
@@ -557,8 +686,52 @@ class WebUSBSerial {
 
         this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
 
+        // FTDI (VID: 0x0403)
+        if (vid === 0x0403) {
+            // FTDI baudrate calculation
+            // Modern FTDI chips (FT232R, FT2232, etc.): BaseClock = 48MHz
+            // BaudDivisor = (48000000 / 16) / BaudRate = 3000000 / BaudRate
+            // Divisor encoding: 16-bit value with sub-integer divisor support
+            // Sub-integer divisor: 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875
+            
+            const baseClock = 3000000; // 48MHz / 16
+            let divisor = baseClock / baudRate;
+            
+            // Extract integer and fractional parts
+            const integerPart = Math.floor(divisor);
+            const fractionalPart = divisor - integerPart;
+            
+            // Encode sub-integer divisor (0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875)
+            let subInteger;
+            if (fractionalPart < 0.0625) subInteger = 0;      // 0.0
+            else if (fractionalPart < 0.1875) subInteger = 1; // 0.125
+            else if (fractionalPart < 0.3125) subInteger = 2; // 0.25
+            else if (fractionalPart < 0.4375) subInteger = 3; // 0.375
+            else if (fractionalPart < 0.5625) subInteger = 4; // 0.5
+            else if (fractionalPart < 0.6875) subInteger = 5; // 0.625
+            else if (fractionalPart < 0.8125) subInteger = 6; // 0.75
+            else subInteger = 7;                               // 0.875
+            
+            // Encode divisor value for FTDI
+            // Low byte: integer part (bits 0-7)
+            // High byte: (integer part >> 8) | (sub-integer << 6)
+            const value = (integerPart & 0xFF) | ((subInteger & 0x07) << 14) | (((integerPart >> 8) & 0x3F) << 8);
+            const index = (integerPart >> 14) & 0x03; // Upper 2 bits of integer part
+            
+            this._log(`[WebUSB FTDI] Setting baudrate ${baudRate} (divisor=${divisor.toFixed(3)}, value=0x${value.toString(16)}, index=0x${index.toString(16)})...`);
+            
+            await this.device.controlTransferOut({
+                requestType: 'vendor',
+                recipient: 'device',
+                request: 0x03, // SIO_SET_BAUD_RATE
+                value: value,
+                index: index
+            });
+            
+            this._log('[WebUSB FTDI] Baudrate changed successfully');
+        }
         // CP2102 (Silicon Labs VID: 0x10c4)
-        if (vid === 0x10c4) {
+        else if (vid === 0x10c4) {
             const baudrateValue = Math.floor(0x384000 / baudRate);
             this._log(`[WebUSB CP2102] Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
             await this.device.controlTransferOut({
