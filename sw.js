@@ -2,10 +2,7 @@
 const CACHE_NAME = 'esp32tool-v2.0.0';
 const RUNTIME_CACHE = 'esp32tool-runtime';
 
-// Detect base path for GitHub Pages deployment
-const basePath = self.location.pathname.match(/^\/[^\/]+\//)?.[0] || '/';
-
-// Core files to cache on install (relative paths)
+// Core files to cache on install (relative paths work for any deployment path)
 const CORE_ASSETS = [
   './',
   './index.html',

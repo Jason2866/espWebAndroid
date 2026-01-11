@@ -1312,6 +1312,13 @@ export class ESPLoader extends EventTarget {
           statusLen = 4;
         } else if ([2, 4].includes(data.length)) {
           statusLen = data.length;
+        } else {
+          // Default to 2-byte status if we can't determine
+          // This prevents silent data corruption when statusLen would be 0
+          statusLen = 2;
+          this.logger.debug(
+            `Unknown chip family, defaulting to 2-byte status (opcode: ${toHex(opcode)}, data.length: ${data.length})`,
+          );
         }
       }
 
@@ -1627,6 +1634,9 @@ export class ESPLoader extends EventTarget {
   }
 
   async reconfigurePort(baud: number) {
+    // Block new writes during the entire reconfiguration (all paths)
+    this._isReconfiguring = true;
+
     try {
       // Wait for pending writes to complete
       try {
@@ -1661,9 +1671,6 @@ export class ESPLoader extends EventTarget {
       }
 
       // Web Serial or CH343: Close and reopen port
-      // Block new writes during port close/open
-      this._isReconfiguring = true;
-
       // Release persistent writer before closing
       if (this._writer) {
         try {
@@ -1684,18 +1691,17 @@ export class ESPLoader extends EventTarget {
       // Reopen Port
       await this.port.open({ baudRate: baud });
 
-      // Port is now open - allow writes again
-      this._isReconfiguring = false;
-
       // Clear buffer again
       await this.flushSerialBuffers();
 
       // Restart Readloop
       this.readLoop();
     } catch (e) {
-      this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
       throw new Error(`Unable to change the baud rate to ${baud}: ${e}`);
+    } finally {
+      // Always reset flag, even on error or early return
+      this._isReconfiguring = false;
     }
   }
 

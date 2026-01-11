@@ -111,4 +111,4 @@ maxTransferSize = 64;  // Catch all small transfers
 ---
 
 **Last Updated:** January 2026
-**Implementation:** espWebAndroid/js/webusb-serial.js
+**Implementation:** js/webusb-serial.js
