@@ -1478,8 +1478,10 @@ export class ESPLoader extends EventTarget {
    * - Byte-by-byte: CH340, CP2102, and other USB-Serial adapters - stable fast processing
    */
   async readPacket(timeout: number): Promise<number[]> {
+    // TESTING: Disable special CH340Android handling to test normal readPacket with CH340
     // Special handling for Android WebUSB with CH340/CP2102
     // Use optimized batch reading for these problematic adapters
+    /*
     if (this.isWebUSB() && !this._isCDCDevice) {
       const portInfo = this.port.getInfo();
       const isCH343 =
@@ -1490,6 +1492,7 @@ export class ESPLoader extends EventTarget {
         return await this.readPacketCH340Android(timeout);
       }
     }
+    */
 
     // Standard readPacket for Desktop and CDC devices
     let partialPacket: number[] | null = null;
@@ -2824,16 +2827,15 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
-    // Initialize adaptive speed multipliers to maximum for CDC devices
-    if (this.isWebUSB() && this._isCDCDevice) {
-      // CH343 has maxTransferSize=64, so baseBlockSize=31
-      // blockSize maximum: 248 bytes (8 * 31) - tested stable
-      // maxInFlight: Start at 248, then test higher values
-      this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
-      this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes (start same as blockSize)
+    // Initialize adaptive speed multipliers for WebUSB devices
+    if (this.isWebUSB()) {
+      // TESTING: Start with conservative values for CH340
+      // blockSize=31 (1 * 31), maxInFlight=62 (2 * 31)
+      this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes
+      this._adaptiveMaxInFlightMultiplier = 2; // maxInFlight = 62 bytes
       this._consecutiveSuccessfulChunks = 0;
       this.logger.log(
-        `[Adaptive] Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+        `[Adaptive] Initialized for testing: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
       );
     }
 
@@ -2877,30 +2879,14 @@ export class ESPLoader extends EventTarget {
           let maxInFlight: number;
 
           if (this.isWebUSB()) {
-            // WebUSB (Android): Different values based on adapter type
-            const portInfo = this.port.getInfo();
-            const isCH343 =
-              portInfo.usbVendorId === 0x1a86 &&
-              portInfo.usbProductId === 0x55d3;
+            // WebUSB (Android): All devices use adaptive speed
+            // All have maxTransferSize=64, baseBlockSize=31
+            const maxTransferSize = (this.port as any).maxTransferSize || 64;
+            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
-            if (isCH343 || this._isCDCDevice) {
-              // CH343 and CDC devices: Adaptive speed - start with maximum, reduce on error
-              // CH343 has maxTransferSize=64, so baseBlockSize=31
-              const maxTransferSize = (this.port as any).maxTransferSize || 64;
-              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes for CH343
-
-              // Use current adaptive multipliers (initialized at start of readFlash)
-              blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
-              maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
-            } else {
-              // CH340, CP2102: CRITICAL calculation based on maxTransferSize
-              // Formula: blockSize = (maxTransferSize - 2) / 2
-              // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
-              // This accounts for SLIP framing (0xC0) and worst-case escaping
-              const maxTransferSize = 64; // USB packet size
-              blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-              maxInFlight = blockSize * 2; // 62 bytes = 2 packets
-            }
+            // Use current adaptive multipliers (initialized at start of readFlash)
+            blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
+            maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
           } else {
             // Web Serial (Desktop): Use multiples of 63 for consistency
             const base = 63;
@@ -3016,8 +3002,8 @@ export class ESPLoader extends EventTarget {
 
           // ADAPTIVE SPEED ADJUSTMENT: Gradually increase speed after successful chunks
           // blockSize maximum: 248 bytes (8 * 31)
-          // maxInFlight: Testing higher values
-          if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
+          // maxInFlight maximum: 248 bytes (8 * 31)
+          if (this.isWebUSB() && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
             // After 2 consecutive successful chunks, increase speed gradually
@@ -3069,7 +3055,7 @@ export class ESPLoader extends EventTarget {
           retryCount++;
 
           // ADAPTIVE SPEED ADJUSTMENT: Only reduce if we're NOT already at minimum
-          if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
+          if (this.isWebUSB() && retryCount === 1) {
             // Only reduce if we're above minimum
             if (
               this._adaptiveBlockMultiplier > 1 ||
