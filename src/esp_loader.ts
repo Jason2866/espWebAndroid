@@ -2885,8 +2885,9 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = 64; // USB packet size
               blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
               // maxInFlight controls how many bytes stub sends before waiting for ACK
-              // With blockSize=31, maxInFlight=62 allows 2 packets before ACK
-              maxInFlight = blockSize * 2; // 62 bytes
+              // CRITICAL: With strict < comparison in stub, maxInFlight must be > blockSize*2
+              // to ensure 2 packets are sent. Using blockSize*3 for safety.
+              maxInFlight = blockSize * 3; // 93 bytes - ensures at least 2 packets
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2909,10 +2910,22 @@ export class ESPLoader extends EventTarget {
           }
 
           while (resp.length < chunkSize) {
+            // Calculate dynamic timeout based on how much data we're expecting
+            // If we haven't received enough bytes for an ACK yet, use longer timeout
+            let packetTimeout = FLASH_READ_TIMEOUT;
+            if (
+              resp.length < lastAckedLength + maxInFlight &&
+              resp.length < chunkSize
+            ) {
+              // We're waiting for more packets before sending ACK
+              // Android/WebUSB has higher latency, so use 150ms instead of 100ms
+              packetTimeout = 150;
+            }
+
             // Read a SLIP packet
             let packet: number[];
             try {
-              packet = await this.readPacket(FLASH_READ_TIMEOUT);
+              packet = await this.readPacket(packetTimeout);
             } catch (err) {
               if (err instanceof SlipReadError) {
                 this.logger.debug(
