@@ -1367,92 +1367,88 @@ export class ESPLoader extends EventTarget {
 
   /**
    * @name readPacketCH340Android
-   * Optimized SLIP packet reader specifically for Android WebUSB with CH340/CP2102
+   * Byte-by-byte SLIP packet reader for Android WebUSB with CH340/CP2102
    *
-   * This version reads in batches (up to 64 bytes) with short timeouts to balance
-   * speed and stability for problematic USB-Serial adapters on Android.
+   * This version reads ONE byte at a time with timeout per byte.
+   * This is more stable for USB-Serial adapters on Android where data
+   * arrives in small chunks and not all at once.
    *
-   * Key differences from standard readPacket:
-   * - Reads up to 64 bytes per iteration (one USB packet)
-   * - Uses 10ms batch timeout instead of full timeout per byte
-   * - Processes bytes immediately without extra buffering
-   *
-   * @param timeout - Maximum time to wait for complete packet in milliseconds
+   * @param timeout - Maximum time to wait for each byte in milliseconds
    * @returns Array of bytes representing one SLIP packet (without framing bytes)
    */
   async readPacketCH340Android(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
-    const startTime = Date.now();
 
     while (true) {
-      // Check global timeout
-      if (Date.now() - startTime > timeout) {
-        throw new SlipReadError(
-          "Timed out waiting for packet " +
-            (partialPacket === null ? "header" : "content"),
-        );
-      }
+      // Wait for ONE byte with timeout
+      const stamp = Date.now();
+      let readBytes: number[] = [];
 
-      // If no data available, wait a bit (same as burst version)
-      if (this._inputBuffer.length === 0) {
-        await sleep(1);
-        continue;
-      }
-
-      // Process ALL available bytes (identical to burst version)
-      while (this._inputBuffer.length > 0) {
-        const b = this._inputBuffer.shift()!;
-
-        if (partialPacket === null) {
-          // waiting for packet header
-          if (b == 0xc0) {
-            partialPacket = [];
-          } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
-              );
-            }
-            throw new SlipReadError(
-              "Invalid head of packet (" + toHex(b) + ")",
-            );
-          }
-        } else if (inEscape) {
-          // part-way through escape sequence
-          inEscape = false;
-          if (b == 0xdc) {
-            partialPacket.push(0xc0);
-          } else if (b == 0xdd) {
-            partialPacket.push(0xdb);
-          } else {
-            if (this.debug) {
-              this.logger.debug("Read invalid data: " + toHex(b));
-              this.logger.debug(
-                "Remaining data in serial buffer: " +
-                  hexFormatter(this._inputBuffer),
-              );
-            }
-            throw new SlipReadError(
-              "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
-            );
-          }
-        } else if (b == 0xdb) {
-          // start of escape sequence
-          inEscape = true;
-        } else if (b == 0xc0) {
-          // end of packet
-          if (this.debug)
-            this.logger.debug(
-              "Received full packet: " + hexFormatter(partialPacket),
-            );
-          return partialPacket;
+      while (Date.now() - stamp < timeout) {
+        if (this._inputBuffer.length > 0) {
+          readBytes.push(this._inputBuffer.shift()!);
+          break;
         } else {
-          // normal byte in packet
-          partialPacket.push(b);
+          await sleep(1);
         }
+      }
+
+      // Timeout - no byte received
+      if (readBytes.length == 0) {
+        const waitingFor = partialPacket === null ? "header" : "content";
+        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+      }
+
+      // Process the ONE byte we just read
+      const b = readBytes[0];
+
+      if (partialPacket === null) {
+        // waiting for packet header
+        if (b == 0xc0) {
+          partialPacket = [];
+        } else {
+          if (this.debug) {
+            this.logger.debug("Read invalid data: " + toHex(b));
+            this.logger.debug(
+              "Remaining data in serial buffer: " +
+                hexFormatter(this._inputBuffer),
+            );
+          }
+          throw new SlipReadError("Invalid head of packet (" + toHex(b) + ")");
+        }
+      } else if (inEscape) {
+        // part-way through escape sequence
+        inEscape = false;
+        if (b == 0xdc) {
+          partialPacket.push(0xc0);
+        } else if (b == 0xdd) {
+          partialPacket.push(0xdb);
+        } else {
+          if (this.debug) {
+            this.logger.debug("Read invalid data: " + toHex(b));
+            this.logger.debug(
+              "Remaining data in serial buffer: " +
+                hexFormatter(this._inputBuffer),
+            );
+          }
+          throw new SlipReadError(
+            "Invalid SLIP escape (0xdb, " + toHex(b) + ")",
+          );
+        }
+      } else if (b == 0xdb) {
+        // start of escape sequence
+        inEscape = true;
+      } else if (b == 0xc0) {
+        // end of packet
+        if (this.debug)
+          this.logger.debug(
+            "Received full packet: " + hexFormatter(partialPacket),
+          );
+        return partialPacket;
+      } else {
+        // normal byte in packet
+        partialPacket.push(b);
       }
     }
   }
