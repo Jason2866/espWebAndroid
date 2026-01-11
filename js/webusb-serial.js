@@ -87,7 +87,7 @@ class WebUSBSerial {
         // If no device found or forceNew is true, request a new device
         if (!device) {
             device = await navigator.usb.requestDevice({ filters });
-            log(`[WebUSB] New device selected (VID: 0x${device.vendorId.toString(16)})`);
+//            log(`[WebUSB] New device selected (VID: 0x${device.vendorId.toString(16)})`);
         }
 
         const port = new WebUSBSerial(logger);
