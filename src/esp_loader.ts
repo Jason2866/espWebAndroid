@@ -3025,9 +3025,9 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = (this.port as any).maxTransferSize || 64;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
-              // Maximum: blockSize=248 (8 * 31), maxInFlight=testing higher values
+              // Maximum: blockSize=248 (8 * 31), maxInFlight=248 (8 * 31)
               const MAX_BLOCK_MULTIPLIER = 8; // 248 bytes - tested stable
-              const MAX_INFLIGHT_MULTIPLIER = 64; // 1984 bytes - testing
+              const MAX_INFLIGHT_MULTIPLIER = 8; // 248 bytes - tested stable
 
               let adjusted = false;
 
