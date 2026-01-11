@@ -41,8 +41,6 @@ export const connect = async (logger: Logger) => {
     await port.open({ baudRate: ESP_ROM_BAUD });
   }
 
-  logger.log("Connected successfully.");
-
   return new ESPLoader(port, logger);
 };
 
@@ -56,8 +54,6 @@ export const connectWithPort = async (port: SerialPort, logger: Logger) => {
   if (!port.readable || !port.writable) {
     await port.open({ baudRate: ESP_ROM_BAUD });
   }
-
-  logger.log("Connected successfully.");
 
   return new ESPLoader(port, logger);
 };

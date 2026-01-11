@@ -54,9 +54,12 @@
     <!-- PWA Service Worker Registration - DISABLED FOR TESTING -->
     <script>
       // Service Worker for PWA functionality
+      // Detect base path for GitHub Pages deployment
+      const basePath = window.location.pathname.match(/^\/[^\/]+\//)?.[0] || '/';
+      
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register(basePath + 'sw.js', { scope: basePath })
             .then((registration) => {
               console.log('[PWA] Service Worker registered:', registration.scope);
               

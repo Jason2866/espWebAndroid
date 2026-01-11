@@ -2,18 +2,21 @@
 const CACHE_NAME = 'esp32tool-v2.0.0';
 const RUNTIME_CACHE = 'esp32tool-runtime';
 
-// Core files to cache on install
+// Detect base path for GitHub Pages deployment
+const basePath = self.location.pathname.match(/^\/[^\/]+\//)?.[0] || '/';
+
+// Core files to cache on install (relative paths)
 const CORE_ASSETS = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/css/light.css',
-  '/css/dark.css',
-  '/js/script.js',
-  '/js/utilities.js',
-  '/js/webusb-serial.js',
-  '/js/modules/esptool.js',
-  '/manifest.json'
+  './',
+  './index.html',
+  './css/style.css',
+  './css/light.css',
+  './css/dark.css',
+  './js/script.js',
+  './js/utilities.js',
+  './js/webusb-serial.js',
+  './js/modules/esptool.js',
+  './manifest.json'
 ];
 
 // Install event - cache core assets

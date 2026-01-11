@@ -17,7 +17,7 @@
 
 ### Voraussetzungen:
 - Android 5.0+ (Lollipop oder höher)
-- Chrome for Android 61+ (aktuell 143+)
+- Chrome for Android 61+
 - USB OTG-Adapter für ESP32-Verbindung
 - HTTPS-Verbindung (oder localhost für Tests)
 

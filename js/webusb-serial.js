@@ -176,6 +176,11 @@ class WebUSBSerial {
                         }
                     }
 
+                    // Validate that both endpoints were found
+                    if (this.endpointIn == null || this.endpointOut == null) {
+                        throw new Error(`Missing bulk endpoints (in=${this.endpointIn}, out=${this.endpointOut})`);
+                    }
+
                     // Use endpoint packet size for transfer length (Android prefers max-packet)
                     try {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
@@ -790,6 +795,13 @@ class WebUSBSerial {
         this.readableStream = new ReadableStream({
             start: async (controller) => {
                 this._readLoopRunning = true;
+                let streamErrored = false;
+
+                // Validate endpoints before starting read loop
+                if (this.endpointIn == null) {
+                    controller.error(new Error('Bulk IN endpoint not configured'));
+                    return;
+                }
 
                 try {
                     while (this._readLoopRunning && this.device) {
@@ -824,9 +836,13 @@ class WebUSBSerial {
                         }
                     }
                 } catch (error) {
+                    streamErrored = true;
                     controller.error(error);
                 } finally {
-                    controller.close();
+                    // Only close if stream didn't error
+                    if (!streamErrored) {
+                        controller.close();
+                    }
                 }
             },
             cancel: () => {
@@ -839,6 +855,9 @@ class WebUSBSerial {
             write: async (chunk) => {
                 if (!this.device) {
                     throw new Error('Device not open');
+                }
+                if (this.endpointOut == null) {
+                    throw new Error('Bulk OUT endpoint not configured');
                 }
                 await this.device.transferOut(this.endpointOut, chunk);
             }

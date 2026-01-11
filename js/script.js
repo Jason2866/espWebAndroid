@@ -2,7 +2,10 @@
 import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
 
 // Make requestSerialPort available globally for esptool.js
-globalThis.requestSerialPort = requestSerialPort;
+// Use defensive assignment to avoid accidental overwrites
+if (!globalThis.requestSerialPort) {
+  globalThis.requestSerialPort = requestSerialPort;
+}
 
 let espStub;
 let esp32s2ReconnectInProgress = false;
