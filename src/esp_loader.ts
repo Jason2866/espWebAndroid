@@ -2886,7 +2886,6 @@ export class ESPLoader extends EventTarget {
               blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
               // maxInFlight controls total bytes stub sends before waiting for ACK
               // With blockSize=31, maxInFlight=62 means stub sends 2 packets before ACK
-              // Each packet is sent in a separate USB transfer (< 64 bytes)
               maxInFlight = blockSize * 2; // 62 bytes = 2 packets
             }
           } else {
@@ -2919,6 +2918,21 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(
                   `SLIP read error at ${resp.length} bytes: ${err.message}`,
                 );
+
+                // LOG THE BUFFER CONTENTS BEFORE DRAINING
+                this.logger.debug(
+                  `[ANALYSIS] Input buffer has ${this._inputBuffer.length} bytes:`,
+                );
+                if (this._inputBuffer.length > 0) {
+                  // Log first 100 bytes in hex
+                  const bytesToLog = Math.min(100, this._inputBuffer.length);
+                  const bufferHex = Array.from(
+                    this._inputBuffer.slice(0, bytesToLog),
+                  )
+                    .map((b) => b.toString(16).padStart(2, "0"))
+                    .join(" ");
+                  this.logger.debug(`[ANALYSIS] Buffer content: ${bufferHex}`);
+                }
 
                 // Send empty SLIP frame to abort the stub's read operation
                 // The stub expects 4 bytes (ACK), if we send less it will break out
