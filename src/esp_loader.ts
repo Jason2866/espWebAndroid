@@ -2827,12 +2827,13 @@ export class ESPLoader extends EventTarget {
     // Initialize adaptive speed multipliers to maximum for CDC devices
     if (this.isWebUSB() && this._isCDCDevice) {
       // CH343 has maxTransferSize=64, so baseBlockSize=31
-      // To reach ~4096 bytes: 4095/31 = 132
-      this._adaptiveBlockMultiplier = 132; // Start at maximum (~4092 bytes)
-      this._adaptiveMaxInFlightMultiplier = 264; // Start at maximum (~8184 bytes)
+      // blockSize maximum: 248 bytes (8 * 31) - tested stable
+      // maxInFlight: Start at 248, then test higher values
+      this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
+      this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes (start same as blockSize)
       this._consecutiveSuccessfulChunks = 0;
       this.logger.log(
-        `[Adaptive] Initialized to maximum: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+        `[Adaptive] Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
       );
     }
 
@@ -3014,7 +3015,8 @@ export class ESPLoader extends EventTarget {
           chunkSuccess = true;
 
           // ADAPTIVE SPEED ADJUSTMENT: Gradually increase speed after successful chunks
-          // Start at maximum (~4096), reduce to minimum (31) on error, then scale up
+          // blockSize maximum: 248 bytes (8 * 31)
+          // maxInFlight: Testing higher values
           if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
@@ -3023,13 +3025,13 @@ export class ESPLoader extends EventTarget {
               const maxTransferSize = (this.port as any).maxTransferSize || 64;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
-              // Maximum: ~4092 bytes (132 * 31), matching FLASH_SECTOR_SIZE
-              const MAX_BLOCK_MULTIPLIER = 132;
-              const MAX_INFLIGHT_MULTIPLIER = 264; // 2x blockSize
+              // Maximum: blockSize=248 (8 * 31), maxInFlight=testing higher values
+              const MAX_BLOCK_MULTIPLIER = 8; // 248 bytes - tested stable
+              const MAX_INFLIGHT_MULTIPLIER = 64; // 1984 bytes - testing
 
               let adjusted = false;
 
-              // Increase both simultaneously - double each time
+              // Increase blockSize first (up to 248), then maxInFlight
               if (this._adaptiveBlockMultiplier < MAX_BLOCK_MULTIPLIER) {
                 this._adaptiveBlockMultiplier = Math.min(
                   this._adaptiveBlockMultiplier * 2,
@@ -3037,7 +3039,8 @@ export class ESPLoader extends EventTarget {
                 );
                 adjusted = true;
               }
-              if (
+              // Once blockSize is at maximum, increase maxInFlight
+              else if (
                 this._adaptiveMaxInFlightMultiplier < MAX_INFLIGHT_MULTIPLIER
               ) {
                 this._adaptiveMaxInFlightMultiplier = Math.min(
