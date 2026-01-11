@@ -2881,11 +2881,6 @@ export class ESPLoader extends EventTarget {
             maxInFlight,
           );
 
-          // DEBUG: Log the parameters we're sending
-          //          this.logger.debug(
-          //            `[FLASH_READ] addr=0x${currentAddr.toString(16)}, len=0x${chunkSize.toString(16)}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-          //          );
-
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
@@ -2902,21 +2897,6 @@ export class ESPLoader extends EventTarget {
                 this.logger.debug(
                   `SLIP read error at ${resp.length} bytes: ${err.message}`,
                 );
-
-                // LOG THE BUFFER CONTENTS BEFORE DRAINING
-                this.logger.debug(
-                  `[ANALYSIS] Input buffer has ${this._inputBuffer.length} bytes:`,
-                );
-                if (this._inputBuffer.length > 0) {
-                  // Log first 100 bytes in hex
-                  const bytesToLog = Math.min(100, this._inputBuffer.length);
-                  const bufferHex = Array.from(
-                    this._inputBuffer.slice(0, bytesToLog),
-                  )
-                    .map((b) => b.toString(16).padStart(2, "0"))
-                    .join(" ");
-                  this.logger.debug(`[ANALYSIS] Buffer content: ${bufferHex}`);
-                }
 
                 // Send empty SLIP frame to abort the stub's read operation
                 // The stub expects 4 bytes (ACK), if we send less it will break out
