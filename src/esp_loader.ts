@@ -2878,15 +2878,12 @@ export class ESPLoader extends EventTarget {
               blockSize = 256; // 256 bytes
               maxInFlight = 512; // 512 bytes
             } else {
-              // CH340, CP2102: CRITICAL calculation based on maxTransferSize
-              // Formula: blockSize = (maxTransferSize - 2) / 2
-              // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
-              // This accounts for SLIP framing (0xC0) and worst-case escaping
-              const maxTransferSize = 64; // USB packet size
-              blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-              // maxInFlight controls total bytes stub sends before waiting for ACK
-              // With blockSize=31, maxInFlight=62 means stub sends 2 packets before ACK
-              maxInFlight = blockSize * 2; // 62 bytes = 2 packets
+              // CH340, CP2102: Use same parameters as esptool.py
+              // esptool.py uses: blockSize=FLASH_SECTOR_SIZE (4096), maxInFlight=64
+              // But this doesn't work for WebUSB with 64-byte USB packets!
+              // We need blockSize small enough to fit in USB packet
+              blockSize = 32; // Small enough for 64-byte USB transfers
+              maxInFlight = 128; // Force stub to send 4 packets (32*4=128)
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2902,6 +2899,12 @@ export class ESPLoader extends EventTarget {
             blockSize,
             maxInFlight,
           );
+
+          // DEBUG: Log the parameters we're sending
+          this.logger.debug(
+            `[FLASH_READ] addr=0x${currentAddr.toString(16)}, len=0x${chunkSize.toString(16)}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+          );
+
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
           if (res != 0) {
