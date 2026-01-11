@@ -76,7 +76,6 @@ class WebUSBSerial {
                 );
                 
                 if (device) {
-                    log(`[WebUSB] Reusing previously authorized device (VID: 0x${device.vendorId.toString(16)})`);
                 }
             } catch (err) {
                 // Can't use this._log in static method, use console as fallback
@@ -87,7 +86,6 @@ class WebUSBSerial {
         // If no device found or forceNew is true, request a new device
         if (!device) {
             device = await navigator.usb.requestDevice({ filters });
-//            log(`[WebUSB] New device selected (VID: 0x${device.vendorId.toString(16)})`);
         }
 
         const port = new WebUSBSerial(logger);
@@ -108,7 +106,6 @@ class WebUSBSerial {
         // If device is already opened, we need to close and reopen it
         // This is critical for ESP32-S2 which changes interfaces when switching modes
         if (this.device.opened) {
-            this._log('[WebUSB] Device already open, closing and reopening to refresh interfaces...');
             
             try {
                 // Release all interfaces
@@ -146,7 +143,7 @@ class WebUSBSerial {
                 await this.device.reset(); 
             } 
         } catch (e) { 
-            this._log('[WebUSB] Device reset failed:', e.message);
+//            this._log('[WebUSB] Device reset failed:', e.message);
         }
 
         const attemptOpenAndClaim = async () => {
@@ -233,13 +230,13 @@ class WebUSBSerial {
                             this._log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
                         }
                     } catch (e) {
-                        this._log(`[WebUSB] Error checking packetSize:`, e);
+                        // Suppress packetSize check error - not critical
                     }
 
                     return config;
                 } catch (claimErr) {
                     lastErr = claimErr;
-                    this._log(`[WebUSB] claim failed on iface ${cand.iface.interfaceNumber}: ${claimErr.message}`);
+                    // Suppress claim failed message - this is expected when trying multiple interfaces
                 }
             }
 
@@ -956,7 +953,6 @@ async function requestSerialPort(forceNew = false) {
     
     // On Android, prefer WebUSB (Web Serial doesn't work properly)
     if (isAndroid && hasUSB) {
-        console.log('[requestSerialPort] Using WebUSB (Android)');
         try {
             return await WebUSBSerial.requestPort(null, forceNew);
         } catch (err) {
@@ -966,7 +962,6 @@ async function requestSerialPort(forceNew = false) {
     
     // Try Web Serial API (preferred on desktop)
     if (hasSerial) {
-        console.log('[requestSerialPort] Using Web Serial');
         try {
             // Web Serial API doesn't support device reuse in the same way
             // It always shows the picker, but the browser remembers permissions
@@ -978,7 +973,6 @@ async function requestSerialPort(forceNew = false) {
     
     // Fall back to WebUSB
     if (hasUSB) {
-        console.log('[requestSerialPort] Using WebUSB (fallback)');
         try {
             return await WebUSBSerial.requestPort(null, forceNew);
         } catch (err) {
