@@ -2878,12 +2878,13 @@ export class ESPLoader extends EventTarget {
               blockSize = 256; // 256 bytes
               maxInFlight = 512; // 512 bytes
             } else {
-              // CH340, CP2102: Use same parameters as esptool.py
-              // esptool.py uses: blockSize=FLASH_SECTOR_SIZE (4096), maxInFlight=64
-              // But this doesn't work for WebUSB with 64-byte USB packets!
-              // We need blockSize small enough to fit in USB packet
-              blockSize = 32; // Small enough for 64-byte USB transfers
-              maxInFlight = 128; // Force stub to send 4 packets (32*4=128)
+              // CH340, CP2102: CRITICAL calculation based on maxTransferSize
+              // Formula: blockSize = (maxTransferSize - 2) / 2
+              // With maxTransferSize=64: blockSize = (64-2)/2 = 31 bytes
+              // This accounts for SLIP framing (0xC0) and worst-case escaping
+              const maxTransferSize = 64; // USB packet size
+              blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
+              maxInFlight = blockSize * 3; // 93 bytes = 3 packets
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2971,12 +2972,13 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment when we've received maxInFlight bytes
-              // The stub sends packets until (num_sent - num_acked) >= max_in_flight,
-              // then waits for ONE ACK with the total number of bytes received.
+              // Send acknowledgment when we've received enough bytes
+              // The stub sends packets until (num_sent - num_acked) >= max_in_flight
+              // We should send ACK when we have received close to maxInFlight bytes
+              // to avoid waiting for packets that may be delayed
               const shouldAck =
                 resp.length >= chunkSize || // End of chunk
-                resp.length >= lastAckedLength + maxInFlight; // Received maxInFlight bytes
+                resp.length >= lastAckedLength + maxInFlight - blockSize; // Received enough (allow 1 packet tolerance)
 
               if (shouldAck) {
                 const ackData = pack("<I", resp.length);
