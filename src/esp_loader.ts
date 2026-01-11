@@ -1767,11 +1767,11 @@ export class ESPLoader extends EventTarget {
         const isCH343 =
           portInfo.usbVendorId === 0x1a86 && portInfo.usbProductId === 0x55d3;
 
-        // CH343 is a CDC device and needs close/reopen like Web Serial
-        // Other non-CDC chips (CH340, CP2102, FTDI) use setBaudRate()
+        // CH343 is a CDC device and MUST use close/reopen
+        // Other chips (CH340, CP2102, FTDI) MUST use setBaudRate()
         if (!isCH343 && typeof (this.port as any).setBaudRate === "function") {
           this.logger.log(
-            `[WebUSB] Changing baudrate to ${baud} without closing port...`,
+            `[WebUSB] Changing baudrate to ${baud} using setBaudRate()...`,
           );
           await (this.port as any).setBaudRate(baud);
           this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
@@ -1779,14 +1779,14 @@ export class ESPLoader extends EventTarget {
           // Give the chip time to adjust to new baudrate
           await sleep(100);
           return;
-        } else {
+        } else if (isCH343) {
           this.logger.log(
-            `[WebUSB] Using close/reopen for baudrate change (CDC device)`,
+            `[WebUSB] CH343 detected - using close/reopen for baudrate change`,
           );
         }
       }
 
-      // Web Serial or CDC devices (CH343): Close and reopen port
+      // Web Serial or CH343: Close and reopen port
       // Block new writes during port close/open
       this._isReconfiguring = true;
 
@@ -1813,22 +1813,11 @@ export class ESPLoader extends EventTarget {
       // Port is now open - allow writes again
       this._isReconfiguring = false;
 
-      // Restart Readloop (don't await - it runs forever)
+      // Clear buffer again
+      await this.flushSerialBuffers();
+
+      // Restart Readloop
       this.readLoop();
-
-      // CRITICAL: Wait until readLoop has actually started
-      // Check that _reader is set (readLoop has called getReader())
-      const startTime = Date.now();
-      while (!this._reader && Date.now() - startTime < 1000) {
-        await sleep(10);
-      }
-
-      if (!this._reader) {
-        throw new Error("ReadLoop failed to start after port reconfiguration");
-      }
-
-      // Give readLoop a bit more time to be ready for incoming data
-      await sleep(50);
     } catch (e) {
       this._isReconfiguring = false;
       this.logger.error(`Reconfigure port error: ${e}`);
@@ -2878,9 +2867,12 @@ export class ESPLoader extends EventTarget {
               portInfo.usbProductId === 0x55d3;
 
             if (isCH343 || this._isCDCDevice) {
-              // CH343 and CDC devices can handle larger values
-              blockSize = 256; // 256 bytes
-              maxInFlight = 512; // 512 bytes
+              // CH343 and CDC devices: Use proven working values from auto_boot_ch343_working branch
+              // CRITICAL: Use multiples of 63 for avoiding SLIP errors
+              const maxTransferSize = (this.port as any).maxTransferSize || 128;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 63 bytes
+              blockSize = baseBlockSize * 1; // 63 bytes
+              maxInFlight = baseBlockSize * 1; // 63 bytes
             } else {
               // CH340, CP2102: CRITICAL calculation based on maxTransferSize
               // Formula: blockSize = (maxTransferSize - 2) / 2
@@ -2891,10 +2883,10 @@ export class ESPLoader extends EventTarget {
               maxInFlight = blockSize * 2; // 62 bytes = 2 packets
             }
           } else {
-            // Web Serial (Desktop): Use values within stub limits
-            // CRITICAL: blockSize MUST be <= 4096 (FLASH_SECTOR_SIZE in stub)
-            blockSize = 0x1000; // 4096 bytes (maximum allowed by stub)
-            maxInFlight = 0x2000; // 8192 bytes
+            // Web Serial (Desktop): Use multiples of 63 for consistency
+            const base = 63;
+            blockSize = base * 65; // 63 * 65 = 4095 (close to 0x1000)
+            maxInFlight = base * 130; // 63 * 130 = 8190 (close to blockSize * 2)
           }
 
           const pkt = pack(
