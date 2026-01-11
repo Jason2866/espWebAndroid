@@ -1369,23 +1369,30 @@ export class ESPLoader extends EventTarget {
    * @name readPacketCH340Android
    * Byte-by-byte SLIP packet reader for Android WebUSB with CH340/CP2102
    *
-   * This version reads ONE byte at a time with timeout per byte.
-   * This is more stable for USB-Serial adapters on Android where data
-   * arrives in small chunks and not all at once.
+   * This version reads ONE byte at a time with a SHORT timeout per byte,
+   * but tracks the TOTAL timeout for the entire packet.
    *
-   * @param timeout - Maximum time to wait for each byte in milliseconds
+   * @param timeout - Maximum time to wait for complete packet in milliseconds
    * @returns Array of bytes representing one SLIP packet (without framing bytes)
    */
   async readPacketCH340Android(timeout: number): Promise<number[]> {
     let partialPacket: number[] | null = null;
     let inEscape = false;
+    const packetStartTime = Date.now();
+    const PER_BYTE_TIMEOUT = 10; // 10ms per byte (enough for USB latency + ESP processing)
 
     while (true) {
-      // Wait for ONE byte with timeout
-      const stamp = Date.now();
+      // Check TOTAL packet timeout
+      if (Date.now() - packetStartTime > timeout) {
+        const waitingFor = partialPacket === null ? "header" : "content";
+        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+      }
+
+      // Wait for ONE byte with SHORT timeout
+      const byteStartTime = Date.now();
       let readBytes: number[] = [];
 
-      while (Date.now() - stamp < timeout) {
+      while (Date.now() - byteStartTime < PER_BYTE_TIMEOUT) {
         if (this._inputBuffer.length > 0) {
           readBytes.push(this._inputBuffer.shift()!);
           break;
@@ -1394,10 +1401,14 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Timeout - no byte received
+      // Timeout for this byte - check if we should give up or continue
       if (readBytes.length == 0) {
-        const waitingFor = partialPacket === null ? "header" : "content";
-        throw new SlipReadError("Timed out waiting for packet " + waitingFor);
+        // If we haven't started the packet yet, keep waiting
+        if (partialPacket === null) {
+          continue; // Keep waiting for packet header
+        }
+        // If we're in the middle of a packet, this is an error
+        throw new SlipReadError("Timed out waiting for packet content");
       }
 
       // Process the ONE byte we just read
