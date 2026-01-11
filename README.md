@@ -19,10 +19,32 @@ ESP32Tool is designed first and foremost for the entire ESP32 family – deliver
 - **Rock-Solid Reliability:** Automatic resume on read errors. No more broken operations, ever.
 - **Plug & Play:** Manage your ESP directly in the browser. No software installation needed.
 - **Offline Ready:** Prefer desktop? Grab the Electron app from our [releases](https://github.com/Jason2866/esp32tool/releases).
+- **📱 Android Ready:** Install as Progressive Web App (PWA) on Android! Works with USB OTG adapters via WebUSB.
 
 - **Bonus:** ESP8266 support is now included! Manage filesystems on ESP8266 devices with the same ease.
 
 > **Try it now:** [jason2866.github.io/esp32tool](https://jason2866.github.io/esp32tool)
+
+---
+
+## 📱 Android Installation (PWA)
+
+ESP32Tool works natively on Android devices with USB OTG support!
+
+**Requirements:**
+- Android 5.0+ (Lollipop or higher)
+- Chrome for Android 61+ (recommended: latest version)
+- USB OTG adapter/cable
+- ESP32/ESP8266 device
+
+**Installation:**
+1. Open [jason2866.github.io/esp32tool](https://jason2866.github.io/esp32tool) in Chrome
+2. Tap the menu (⋮) → "Add to Home screen" or "Install app"
+3. Connect your ESP device via USB OTG adapter
+4. Grant USB permissions when prompted
+5. Flash and manage your ESP devices on the go!
+
+**For developers:** See [PWA-SETUP.md](PWA-SETUP.md) for PWA configuration details.
 
 ---
 

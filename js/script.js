@@ -1,3 +1,12 @@
+// Import WebUSB serial support for Android compatibility
+import { WebUSBSerial, requestSerialPort } from './webusb-serial.js';
+
+// Make requestSerialPort available globally for esptool.js
+// Use defensive assignment to avoid accidental overwrites
+if (!globalThis.requestSerialPort) {
+  globalThis.requestSerialPort = requestSerialPort;
+}
+
 let espStub;
 let esp32s2ReconnectInProgress = false;
 let currentLittleFS = null;
@@ -8,6 +17,7 @@ let currentFilesystemType = null; // 'littlefs', 'fatfs', or 'spiffs'
 let littlefsModulePromise = null; // Cache for LittleFS WASM module
 let lastReadFlashData = null; // Store last read flash data for ESP8266
 let currentChipName = null; // Store chip name globally
+let isConnected = false; // Track connection state
 
 /**
  * Get display name for current filesystem type
@@ -96,7 +106,7 @@ const isElectron = window.electronAPI && window.electronAPI.isElectron;
 const maxLogLength = 100;
 const log = document.getElementById("log");
 const butConnect = document.getElementById("butConnect");
-const baudRate = document.getElementById("baudRate");
+const baudRateSelect = document.getElementById("baudRate");
 const butClear = document.getElementById("butClear");
 const butErase = document.getElementById("butErase");
 const butProgram = document.getElementById("butProgram");
@@ -190,7 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUploadRowsVisibility();
   
   autoscroll.addEventListener("click", clickAutoscroll);
-  baudRate.addEventListener("change", changeBaudRate);
+  baudRateSelect.addEventListener("change", changeBaudRate);
   darkMode.addEventListener("click", clickDarkMode);
   debugMode.addEventListener("click", clickDebugMode);
   showLog.addEventListener("click", clickShowLog);
@@ -228,7 +238,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   
-  if ("serial" in navigator) {
+  // Check for Web Serial or WebUSB support
+  if ("serial" in navigator || "usb" in navigator) {
     const notSupported = document.getElementById("notSupported");
     notSupported.classList.add("hidden");
   }
@@ -244,7 +255,7 @@ function initBaudRate() {
     var option = document.createElement("option");
     option.text = rate + " Baud";
     option.value = rate;
-    baudRate.add(option);
+    baudRateSelect.add(option);
   }
 }
 
@@ -266,31 +277,8 @@ function debugMsg(...args) {
   if (!debugMode.checked) {
     return;
   }
-  
-  function getStackTrace() {
-    let stack = new Error().stack;
-    //console.log(stack);
-    stack = stack.split("\n").map((v) => v.trim());
-    stack.shift();
-    stack.shift();
 
-    let trace = [];
-    for (let line of stack) {
-      line = line.replace("at ", "");
-      trace.push({
-        func: line.substr(0, line.indexOf("(") - 1),
-        pos: line.substring(line.indexOf(".js:") + 4, line.lastIndexOf(":")),
-      });
-    }
-
-    return trace;
-  }
-
-  let stack = getStackTrace();
-  stack.shift();
-  let top = stack.shift();
-  let prefix =
-    '<span class="debug-function">[' + top.func + ":" + top.pos + "]</span> ";
+  let prefix = "";
   for (let arg of args) {
     if (arg === undefined) {
       logMsg(prefix + "undefined");
@@ -360,7 +348,10 @@ function formatMacAddr(macAddr) {
  * Click handler for the connect/disconnect button.
  */
 async function clickConnect() {
+  console.log('[clickConnect] Function called');
+  
   if (espStub) {
+    console.log('[clickConnect] Already connected, disconnecting...');
     // Remove disconnect event listener to prevent it from firing during manual disconnect
     if (espStub.handleDisconnect) {
       espStub.removeEventListener("disconnect", espStub.handleDisconnect);
@@ -377,13 +368,51 @@ async function clickConnect() {
     return;
   }
 
+  console.log('[clickConnect] Getting esploaderMod...');
   const esploaderMod = await window.esptoolPackage;
 
-  let esploader = await esploaderMod.connect({
-    log: (...args) => logMsg(...args),
-    debug: (...args) => debugMsg(...args),
-    error: (...args) => errorMsg(...args),
-  });
+  // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
+  // Check multiple indicators for Android
+  const userAgent = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const isAndroid = /Android/i.test(userAgent) || 
+                    /Linux armv/i.test(platform) ||
+                    /Linux aarch64/i.test(platform);
+  
+  const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+  console.log(`[Connect] ${platformMsg}`);
+  console.log(`[Connect] navigator.platform: ${platform}`);
+  console.log(`[Connect] isAndroid: ${isAndroid}`);
+  
+  // Also log to UI
+  logMsg(platformMsg);
+  logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
+  
+  let esploader;
+  
+  if (isAndroid) {
+    // Android: Use WebUSB directly
+    console.log('[Connect] Using WebUSB for Android');
+    try {
+      const port = await WebUSBSerial.requestPort((...args) => logMsg(...args));
+      esploader = await esploaderMod.connectWithPort(port, {
+        log: (...args) => logMsg(...args),
+        debug: (...args) => debugMsg(...args),
+        error: (...args) => errorMsg(...args),
+      });
+    } catch (err) {
+      logMsg(`WebUSB connection failed: ${err.message || err}`);
+      throw err;
+    }
+  } else {
+    // Desktop: Use Web Serial (standard esptool connect)
+    console.log('[Connect] Using Web Serial for Desktop');
+    esploader = await esploaderMod.connect({
+      log: (...args) => logMsg(...args),
+      debug: (...args) => debugMsg(...args),
+      error: (...args) => errorMsg(...args),
+    });
+  }
   
   // Store port info for ESP32-S2 detection
   let portInfo = esploader.port?.getInfo ? esploader.port.getInfo() : {};
@@ -404,119 +433,73 @@ async function clickConnect() {
       espStub = undefined;
       
       try {
+        // Close the port first
         await esploader.port.close();
         
-        if (esploader.port.forget) {
+        // For Android WebUSB: ESP32-S2 automatic reconnection doesn't work
+        // Show message and let user reconnect manually with BOOT button
+        if (isAndroid) {
+          logMsg("ESP32-S2 has switched to CDC mode");
+          logMsg("Please press and HOLD the BOOT button on your ESP32-S2, then click Connect");
+          esp32s2ReconnectInProgress = false;
+          return;
+        }
+        // For Desktop Web Serial: Use the modal dialog approach
+        if (!isAndroid && esploader.port.forget) {
           await esploader.port.forget();
         }
       } catch (disconnectErr) {
         // Ignore disconnect errors
+        console.warn("Error during disconnect:", disconnectErr);
       }
       
-      // Show modal dialog
-      const modal = document.getElementById("esp32s2Modal");
-      const reconnectBtn = document.getElementById("butReconnectS2");
-      
-      modal.classList.remove("hidden");
-      
-      // Handle reconnect button click
-      const handleReconnect = async () => {
-        modal.classList.add("hidden");
-        reconnectBtn.removeEventListener("click", handleReconnect);
+      // Show modal dialog ONLY for Desktop
+      if (!isAndroid) {
+        const modal = document.getElementById("esp32s2Modal");
+        const reconnectBtn = document.getElementById("butReconnectS2");
         
-        // Trigger port selection
-        try {
-          await clickConnect();
-          // Reset flag on successful connection
-          esp32s2ReconnectInProgress = false;
-        } catch (err) {
-          errorMsg("Failed to reconnect: " + err);
-          // Reset flag on error so user can try again
-          esp32s2ReconnectInProgress = false;
-        }
-      };
-      
-      reconnectBtn.addEventListener("click", handleReconnect);
+        modal.classList.remove("hidden");
+        
+        // Handle reconnect button click
+        const handleReconnect = async () => {
+          modal.classList.add("hidden");
+          reconnectBtn.removeEventListener("click", handleReconnect);
+          
+          logMsg("Requesting new device selection...");
+          
+          // Trigger port selection
+          try {
+            await clickConnect();
+            // Reset flag on successful connection
+            esp32s2ReconnectInProgress = false;
+          } catch (err) {
+            errorMsg("Failed to reconnect: " + err);
+            // Reset flag on error so user can try again
+            esp32s2ReconnectInProgress = false;
+          }
+        };
+        
+        reconnectBtn.addEventListener("click", handleReconnect);
+      }
     });
   }
   
   try {
     await esploader.initialize();
   } catch (err) {
-    // Check if this is an ESP32-S2 that needs reconnection
-    if (isESP32S2 && isElectron && !esp32s2ReconnectInProgress) {
-      esp32s2ReconnectInProgress = true;
-      logMsg("ESP32-S2 Native USB detected - automatic reconnection...");
-      toggleUIConnected(false);
-      
-      try {
-        await esploader.port.close();
-      } catch (e) {
-        console.debug("Port close error:", e);
-      }
-      
-      // Wait for new port to appear
-      logMsg("Waiting for ESP32-S2 CDC port...");
-      
-      const waitForNewPort = new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (navigator.serial && navigator.serial.getPorts) {
-            navigator.serial.getPorts().then(ports => {
-              if (ports.length > 0) {
-                clearInterval(checkInterval);
-                resolve(ports[0]);
-              }
-            });
-          }
-        }, 50);
-        
-        // Timeout after 500 ms
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve(null);
-        }, 500);
-      });
-      
-      const newPort = await waitForNewPort;
-      
-      if (!newPort) {
-        esp32s2ReconnectInProgress = false;
-        throw new Error("ESP32-S2 CDC port did not appear in time");
-      }
-      
-      // Additional small delay to ensure port is ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Open the new port and create ESPLoader directly
-      await newPort.open({ baudRate: 115200 });
-      logMsg("Connected successfully.");
-      
-      esploader = new esploaderMod.ESPLoader(newPort, {
-        log: (...args) => logMsg(...args),
-        debug: (...args) => debugMsg(...args),
-        error: (...args) => errorMsg(...args),
-      });
-      
-      // Initialize the new connection
-      await esploader.initialize();
-      
-      esp32s2ReconnectInProgress = false;
-      logMsg("ESP32-S2 reconnection successful!");
-    } else {
-      // If ESP32-S2 reconnect is in progress (browser modal), suppress the error
-      if (esp32s2ReconnectInProgress) {
-        logMsg("Initialization interrupted for ESP32-S2 reconnection.");
-        return;
-      }
-      
-      // Not ESP32-S2 or reconnect already attempted
-      try {
-        await esploader.disconnect();
-      } catch (disconnectErr) {
-        // Ignore disconnect errors
-      }
-      throw err;
+    // If ESP32-S2 reconnect is in progress (handled by event listener), suppress the error
+    if (esp32s2ReconnectInProgress) {
+      logMsg("Initialization interrupted for ESP32-S2 reconnection.");
+      return;
     }
+    
+    // Not ESP32-S2 or other error
+    try {
+      await esploader.disconnect();
+    } catch (disconnectErr) {
+      // Ignore disconnect errors
+    }
+    throw err;
   }
 
   logMsg("Connected to " + esploader.chipName);
@@ -526,6 +509,7 @@ async function clickConnect() {
   currentChipName = esploader.chipName;
 
   espStub = await esploader.runStub();
+  
   toggleUIConnected(true);
   toggleUIToolbar(true);
   
@@ -554,7 +538,7 @@ async function clickConnect() {
   }
   
   // Set the selected baud rate
-  let baud = parseInt(baudRate.value);
+  let baud = parseInt(baudRateSelect.value);
   if (baudRates.includes(baud)) {
     await espStub.setBaudrate(baud);
   }
@@ -573,9 +557,9 @@ async function clickConnect() {
  * Change handler for the Baud Rate selector.
  */
 async function changeBaudRate() {
-  saveSetting("baudrate", baudRate.value);
+  saveSetting("baudrate", baudRateSelect.value);
   if (espStub) {
-    let baud = parseInt(baudRate.value);
+    let baud = parseInt(baudRateSelect.value);
     if (baudRates.includes(baud)) {
       await espStub.setBaudrate(baud);
     }
@@ -870,7 +854,7 @@ async function clickErase() {
   }
   
   if (confirmed) {
-    baudRate.disabled = true;
+    baudRateSelect.disabled = true;
     butErase.disabled = true;
     butProgram.disabled = true;
     try {
@@ -882,7 +866,7 @@ async function clickErase() {
       errorMsg(e);
     } finally {
       butErase.disabled = false;
-      baudRate.disabled = false;
+      baudRateSelect.disabled = false;
       butProgram.disabled = getValidFiles().length == 0;
     }
   }
@@ -909,7 +893,7 @@ async function clickProgram() {
     });
   };
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   for (let i = 0; i < firmware.length; i++) {
@@ -943,7 +927,7 @@ async function clickProgram() {
     progress[i].querySelector("div").style.width = "0";
   }
   butErase.disabled = false;
-  baudRate.disabled = false;
+  baudRateSelect.disabled = false;
   butProgram.disabled = getValidFiles().length == 0;
   logMsg("To run the new firmware, please reset your device.");
 }
@@ -1032,7 +1016,7 @@ async function clickReadFlash() {
 
   const defaultFilename = `flash_0x${offset.toString(16)}_0x${size.toString(16)}.bin`;
 
-  baudRate.disabled = true;
+  baudRateSelect.disabled = true;
   butErase.disabled = true;
   butProgram.disabled = true;
   butReadFlash.disabled = true;
@@ -1062,8 +1046,6 @@ async function clickReadFlash() {
     const esptoolMod = await window.esptoolPackage;
     const fsType = esptoolMod.detectFilesystemFromImage(data, chipName);
     
-    logMsg(`Filesystem detection: ${fsType} (chipName: ${chipName})`);
-    
     if (fsType !== 'unknown') {
       logMsg(`Detected ${fsType} filesystem in read data`);
       
@@ -1090,7 +1072,7 @@ async function clickReadFlash() {
     readProgress.classList.add("hidden");
     readProgress.querySelector("div").style.width = "0";
     butErase.disabled = false;
-    baudRate.disabled = false;
+    baudRateSelect.disabled = false;
     butProgram.disabled = getValidFiles().length == 0;
     butReadFlash.disabled = false;
     readOffset.disabled = false;
@@ -1420,7 +1402,7 @@ function toggleUIConnected(connected) {
 function loadAllSettings() {
   // Load all saved settings or defaults
   autoscroll.checked = loadSetting("autoscroll", true);
-  baudRate.value = loadSetting("baudrate", 2000000);
+  baudRateSelect.value = loadSetting("baudrate", 2000000);
   darkMode.checked = loadSetting("darkmode", false);
   debugMode.checked = loadSetting("debugmode", true);
   showLog.checked = loadSetting("showlog", false);
