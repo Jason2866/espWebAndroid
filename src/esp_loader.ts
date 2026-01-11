@@ -2884,7 +2884,9 @@ export class ESPLoader extends EventTarget {
               // This accounts for SLIP framing (0xC0) and worst-case escaping
               const maxTransferSize = 64; // USB packet size
               blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-              maxInFlight = blockSize * 2; // 62 bytes - allow 2 blocks in flight
+              // maxInFlight controls how many bytes stub sends before waiting for ACK
+              // With blockSize=31, maxInFlight=62 allows 2 packets before ACK
+              maxInFlight = blockSize * 2; // 62 bytes
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2952,20 +2954,21 @@ export class ESPLoader extends EventTarget {
               resp = newResp;
 
               // Send acknowledgment ONLY when needed
-              // Condition: data.length >= (lastAckedLength + maxInFlight) OR data.length >= chunkSize
-              if (
-                resp.length >= lastAckedLength + maxInFlight ||
-                resp.length >= chunkSize
-              ) {
+              // For small blockSize (CH340/CP2102), send ACK after each block
+              // For large blockSize, send ACK when we've received maxInFlight bytes
+              const shouldAck =
+                resp.length >= chunkSize || // End of chunk
+                resp.length >= lastAckedLength + maxInFlight || // Received maxInFlight bytes
+                (blockSize <= 64 && resp.length >= lastAckedLength + blockSize); // Small blocks: ACK each block
+
+              if (shouldAck) {
                 const ackData = pack("<I", resp.length);
                 const slipEncodedAck = slipEncode(ackData);
                 await this.writeToStream(slipEncodedAck);
 
-                // lastAckedLength = Math.min(lastAckedLength + maxInFlight, totalLength))
-                lastAckedLength = Math.min(
-                  lastAckedLength + maxInFlight,
-                  chunkSize,
-                );
+                // Update lastAckedLength to current response length
+                // This ensures next ACK is sent at the right time
+                lastAckedLength = resp.length;
               }
             }
           }
