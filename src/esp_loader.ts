@@ -2884,7 +2884,7 @@ export class ESPLoader extends EventTarget {
               // This accounts for SLIP framing (0xC0) and worst-case escaping
               const maxTransferSize = 64; // USB packet size
               blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-              maxInFlight = blockSize * 3; // 93 bytes = 3 packets
+              maxInFlight = blockSize * 2; // 62 bytes = 2 packets
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2972,13 +2972,12 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment when we've received enough bytes
+              // Send acknowledgment when we've received maxInFlight bytes
               // The stub sends packets until (num_sent - num_acked) >= max_in_flight
-              // We should send ACK when we have received close to maxInFlight bytes
-              // to avoid waiting for packets that may be delayed
+              // We MUST wait for all packets before sending ACK
               const shouldAck =
                 resp.length >= chunkSize || // End of chunk
-                resp.length >= lastAckedLength + maxInFlight - blockSize; // Received enough (allow 1 packet tolerance)
+                resp.length >= lastAckedLength + maxInFlight; // Received all packets
 
               if (shouldAck) {
                 const ackData = pack("<I", resp.length);
