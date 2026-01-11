@@ -1747,19 +1747,19 @@ export class ESPLoader extends EventTarget {
         // CH343 is a CDC device and MUST use close/reopen
         // Other chips (CH340, CP2102, FTDI) MUST use setBaudRate()
         if (!isCH343 && typeof (this.port as any).setBaudRate === "function") {
-          this.logger.log(
-            `[WebUSB] Changing baudrate to ${baud} using setBaudRate()...`,
-          );
+          //          this.logger.log(
+          //            `[WebUSB] Changing baudrate to ${baud} using setBaudRate()...`,
+          //          );
           await (this.port as any).setBaudRate(baud);
-          this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
+          //          this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
 
           // Give the chip time to adjust to new baudrate
           await sleep(100);
           return;
         } else if (isCH343) {
-          this.logger.log(
-            `[WebUSB] CH343 detected - using close/reopen for baudrate change`,
-          );
+          //          this.logger.log(
+          //            `[WebUSB] CH343 detected - using close/reopen for baudrate change`,
+          //          );
         }
       }
 

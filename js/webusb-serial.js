@@ -180,7 +180,6 @@ class WebUSBSerial {
                     try {
                         const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
                         if (inEp && inEp.packetSize) {
-//                            this._log(`[WebUSB] Endpoint packetSize=${inEp.packetSize}, using fixed maxTransferSize=${this.maxTransferSize} for better performance`);
                             // Don't limit by packetSize - use our optimized value
                         } else {
                             this._log(`[WebUSB] No packetSize found, keeping maxTransferSize=${this.maxTransferSize}`);
@@ -237,7 +236,6 @@ class WebUSBSerial {
         if (this.device.vendorId === 0x10c4) {
             try {
                 // Step 1: Enable UART interface
-//                this._log('[WebUSB CP2102] Step 1: Enabling UART interface (IFC_ENABLE)...');
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -245,10 +243,8 @@ class WebUSBSerial {
                     value: 0x01,   // UART_ENABLE
                     index: 0x00
                 });
-//                this._log('[WebUSB CP2102] UART interface enabled');
 
                 // Step 2: Set line control (8N1: 8 data bits, no parity, 1 stop bit)
-//                this._log('[WebUSB CP2102] Step 2: Setting line control (8N1)...');
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -256,10 +252,8 @@ class WebUSBSerial {
                     value: 0x0800, // 8 data bits, no parity, 1 stop bit
                     index: 0x00
                 });
-//                this._log('[WebUSB CP2102] Line control set');
 
                 // Step 3: Set DTR/RTS signals (vendor-specific for CP2102)
-//                this._log('[WebUSB CP2102] Step 3: Setting DTR=1, RTS=1 (SET_MHS)...');
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -267,11 +261,9 @@ class WebUSBSerial {
                     value: 0x03 | 0x0100 | 0x0200, // DTR=1, RTS=1 with masks
                     index: 0x00
                 });
-//                this._log('[WebUSB CP2102] DTR/RTS signals set');
 
                 // Step 4: Set baudrate (vendor-specific for CP2102)
                 const baudrateValue = Math.floor(0x384000 / baudRate);
-//                this._log(`[WebUSB CP2102] Step 4: Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
                     recipient: 'device',
@@ -279,7 +271,6 @@ class WebUSBSerial {
                     value: baudrateValue,
                     index: 0x00
                 });
-//                this._log('[WebUSB CP2102] Baudrate set successfully');
             } catch (e) {
                 console.warn('[WebUSB CP2102] Initialization error:', e.message);
             }
@@ -445,7 +436,6 @@ class WebUSBSerial {
                     value: 0x03, // DTR=1, RTS=1 (both asserted)
                     index: this.controlInterface || 0
                 });
-//                this._log('[WebUSB] Initialized DTR=1, RTS=1 (value=0x03)');
             } catch (e) {
                 console.warn('Could not set control lines:', e.message);
             }
@@ -455,7 +445,6 @@ class WebUSBSerial {
         } else {
             // Streams exist, but make sure read loop is running
             if (!this._readLoopRunning) {
-//                this._log('[WebUSB] Restarting read loop...');
                 this._readLoopRunning = true;
                 // Note: ReadableStream can't be restarted, we need to recreate it
                 this._createStreams();
@@ -548,22 +537,17 @@ class WebUSBSerial {
             const vid = this.device.vendorId;
             const pid = this.device.productId;
 
-//            this._log(`[WebUSB] setSignals called: VID=0x${vid.toString(16)}, PID=0x${pid.toString(16)}, DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}`);
-
             // Detect chip type and use appropriate control request
             // CP2102 (Silicon Labs VID: 0x10c4)
             if (vid === 0x10c4) {
-//                this._log('[WebUSB] Detected CP2102 - using vendor-specific request');
                 return await this._setSignalsCP2102(signals);
             }
             // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
             else if (vid === 0x1a86 && pid !== 0x55d3) {
-//                this._log('[WebUSB] Detected CH340 - using vendor-specific request');
                 return await this._setSignalsCH340(signals);
             }
             // CDC/ACM (CH343, Native USB, etc.)
             else {
-//                this._log('[WebUSB] Detected CDC/ACM device - using standard request');
                 return await this._setSignalsCDC(signals);
             }
         }).catch(err => {
@@ -582,8 +566,6 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 1 : 0;
         value |= signals.requestToSend ? 2 : 0;
 
-//        this._log(`[WebUSB CDC] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
-
         try {
             const result = await this.device.controlTransferOut({
                 requestType: 'class',
@@ -592,8 +574,7 @@ class WebUSBSerial {
                 value: value,
                 index: this.controlInterface || 0
             });
-            
-//            this._log(`[WebUSB CDC] Control transfer result: status=${result.status}`);
+
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
@@ -620,8 +601,6 @@ class WebUSBSerial {
             value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
         }
 
-//        this._log(`[WebUSB CP2102] Setting signals: DTR=${signals.dataTerminalReady}, RTS=${signals.requestToSend}, value=0x${value.toString(16)}`);
-
         try {
             const result = await this.device.controlTransferOut({
                 requestType: 'vendor',
@@ -630,8 +609,7 @@ class WebUSBSerial {
                 value: value,
                 index: 0x00  // CP2102 always uses index 0
             });
-            
-//            this._log(`[WebUSB CP2102] Control transfer result: status=${result.status}`);
+
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
@@ -650,8 +628,6 @@ class WebUSBSerial {
         value |= signals.dataTerminalReady ? 0 : 0x20; // DTR (inverted)
         value |= signals.requestToSend ? 0 : 0x40;     // RTS (inverted)
 
-//        this._log(`[WebUSB CH340] Setting signals: DTR=${signals.dataTerminalReady ? 1 : 0}, RTS=${signals.requestToSend ? 1 : 0}, value=0x${value.toString(16)}`);
-
         try {
             const result = await this.device.controlTransferOut({
                 requestType: 'vendor',
@@ -660,8 +636,7 @@ class WebUSBSerial {
                 value: ~((signals.dataTerminalReady ? 1 << 5 : 0) | (signals.requestToSend ? 1 << 6 : 0)),
                 index: 0
             });
-            
-//            this._log(`[WebUSB CH340] Control transfer result: status=${result.status}`);
+
             await new Promise(resolve => setTimeout(resolve, 50));
             return result;
         } catch (e) {
@@ -684,7 +659,7 @@ class WebUSBSerial {
         const vid = this.device.vendorId;
         const pid = this.device.productId;
 
-        this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
+//        this._log(`[WebUSB] Changing baudrate to ${baudRate}...`);
 
         // FTDI (VID: 0x0403)
         if (vid === 0x0403) {
@@ -717,8 +692,8 @@ class WebUSBSerial {
             // High byte: (integer part >> 8) | (sub-integer << 6)
             const value = (integerPart & 0xFF) | ((subInteger & 0x07) << 14) | (((integerPart >> 8) & 0x3F) << 8);
             const index = (integerPart >> 14) & 0x03; // Upper 2 bits of integer part
-            
-            this._log(`[WebUSB FTDI] Setting baudrate ${baudRate} (divisor=${divisor.toFixed(3)}, value=0x${value.toString(16)}, index=0x${index.toString(16)})...`);
+
+//            this._log(`[WebUSB FTDI] Setting baudrate ${baudRate} (divisor=${divisor.toFixed(3)}, value=0x${value.toString(16)}, index=0x${index.toString(16)})...`);
             
             await this.device.controlTransferOut({
                 requestType: 'vendor',
@@ -728,14 +703,14 @@ class WebUSBSerial {
                 index: index
             });
             
-            this._log('[WebUSB FTDI] Baudrate changed successfully');
+//            this._log('[WebUSB FTDI] Baudrate changed successfully');
         }
         // CP2102 (Silicon Labs VID: 0x10c4)
         else if (vid === 0x10c4) {
             // CP210x baudrate encoding (from Silicon Labs AN571)
             // For CP2102/CP2103: Use direct 32-bit baudrate value
             // Request: IFC_SET_BAUDRATE (0x1E)
-            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate}...`);
+//            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate}...`);
             
             // Encode baudrate as 32-bit little-endian value
             const baudrateBuffer = new ArrayBuffer(4);
@@ -749,8 +724,7 @@ class WebUSBSerial {
                 value: 0,
                 index: 0
             }, baudrateBuffer);
-            
-            this._log('[WebUSB CP2102] Baudrate changed successfully');
+
         }
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
         else if (vid === 0x1a86 && pid !== 0x55d3) {
@@ -776,9 +750,7 @@ class WebUSBSerial {
             factor = 0x10000 - factor;
             const a = (factor & 0xff00) | divisor;
             const b = factor & 0xff;
-            
-            this._log(`[WebUSB CH340] Setting baudrate ${baudRate} (a=0x${a.toString(16)}, b=0x${b.toString(16)})...`);
-            
+
             // CH340 uses request 0x9A to set baudrate
             await this.device.controlTransferOut({
                 requestType: 'vendor',
@@ -796,8 +768,7 @@ class WebUSBSerial {
                 value: 0x0f2c, // Fixed value
                 index: b
             });
-            
-            this._log('[WebUSB CH340] Baudrate changed successfully');
+
         }
         // CDC devices (CH343, ESP32 Native USB) - no action needed in setBaudRate()
         // They are handled by close/reopen in esp_loader.ts
