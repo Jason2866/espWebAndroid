@@ -2884,10 +2884,10 @@ export class ESPLoader extends EventTarget {
               // This accounts for SLIP framing (0xC0) and worst-case escaping
               const maxTransferSize = 64; // USB packet size
               blockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
-              // maxInFlight controls how many bytes stub sends before waiting for ACK
-              // CRITICAL: With strict < comparison in stub, maxInFlight must be > blockSize*2
-              // to ensure 2 packets are sent. Using blockSize*3 for safety.
-              maxInFlight = blockSize * 3; // 93 bytes - ensures at least 2 packets
+              // maxInFlight controls total bytes stub sends before waiting for ACK
+              // With blockSize=31, maxInFlight=62 means stub sends 2 packets before ACK
+              // Each packet is sent in a separate USB transfer (< 64 bytes)
+              maxInFlight = blockSize * 2; // 62 bytes = 2 packets
             }
           } else {
             // Web Serial (Desktop): Use values within stub limits
@@ -2910,22 +2910,10 @@ export class ESPLoader extends EventTarget {
           }
 
           while (resp.length < chunkSize) {
-            // Calculate dynamic timeout based on how much data we're expecting
-            // If we haven't received enough bytes for an ACK yet, use longer timeout
-            let packetTimeout = FLASH_READ_TIMEOUT;
-            if (
-              resp.length < lastAckedLength + maxInFlight &&
-              resp.length < chunkSize
-            ) {
-              // We're waiting for more packets before sending ACK
-              // Android/WebUSB has higher latency, so use 150ms instead of 100ms
-              packetTimeout = 150;
-            }
-
             // Read a SLIP packet
             let packet: number[];
             try {
-              packet = await this.readPacket(packetTimeout);
+              packet = await this.readPacket(FLASH_READ_TIMEOUT);
             } catch (err) {
               if (err instanceof SlipReadError) {
                 this.logger.debug(
@@ -2966,13 +2954,12 @@ export class ESPLoader extends EventTarget {
               newResp.set(packetData, resp.length);
               resp = newResp;
 
-              // Send acknowledgment ONLY when needed
-              // For small blockSize (CH340/CP2102), send ACK after each block
-              // For large blockSize, send ACK when we've received maxInFlight bytes
+              // Send acknowledgment when we've received maxInFlight bytes
+              // The stub sends packets until (num_sent - num_acked) >= max_in_flight,
+              // then waits for ONE ACK with the total number of bytes received.
               const shouldAck =
                 resp.length >= chunkSize || // End of chunk
-                resp.length >= lastAckedLength + maxInFlight || // Received maxInFlight bytes
-                (blockSize <= 64 && resp.length >= lastAckedLength + blockSize); // Small blocks: ACK each block
+                resp.length >= lastAckedLength + maxInFlight; // Received maxInFlight bytes
 
               if (shouldAck) {
                 const ackData = pack("<I", resp.length);
