@@ -2882,9 +2882,9 @@ export class ESPLoader extends EventTarget {
           );
 
           // DEBUG: Log the parameters we're sending
-          this.logger.debug(
-            `[FLASH_READ] addr=0x${currentAddr.toString(16)}, len=0x${chunkSize.toString(16)}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
-          );
+          //          this.logger.debug(
+          //            `[FLASH_READ] addr=0x${currentAddr.toString(16)}, len=0x${chunkSize.toString(16)}, blockSize=${blockSize}, maxInFlight=${maxInFlight}`,
+          //          );
 
           const [res] = await this.checkCommand(ESP_READ_FLASH, pkt);
 
