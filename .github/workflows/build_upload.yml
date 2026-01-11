@@ -83,7 +83,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Github Action: Updated dist files and PWA assets"
-          file_pattern: "js/modules/*.js icons/*.png screenshots/*.png favicon.ico apple-touch-icon.png"
+          file_pattern: "js/modules/*.js icons/*.png screenshots/*.png manifest.json sw.js favicon.ico apple-touch-icon.png"
       - name: Publish to NPM registry (OIDC Trusted Publishing)
         uses: JS-DevTools/npm-publish@v4
         with:
