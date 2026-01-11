@@ -2824,6 +2824,18 @@ export class ESPLoader extends EventTarget {
       `Reading ${size} bytes from flash at address 0x${addr.toString(16)}...`,
     );
 
+    // Initialize adaptive speed multipliers to maximum for CDC devices
+    if (this.isWebUSB() && this._isCDCDevice) {
+      // CH343 has maxTransferSize=64, so baseBlockSize=31
+      // To reach ~4096 bytes: 4095/31 = 132
+      this._adaptiveBlockMultiplier = 132; // Start at maximum (~4092 bytes)
+      this._adaptiveMaxInFlightMultiplier = 264; // Start at maximum (~8184 bytes)
+      this._consecutiveSuccessfulChunks = 0;
+      this.logger.log(
+        `[Adaptive] Initialized to maximum: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+      );
+    }
+
     // Chunk size: Amount of data to request from ESP in one command
     // For WebUSB (Android), use smaller chunks to avoid timeouts and buffer issues
     // For Web Serial (Desktop), use larger chunks for better performance
@@ -2871,12 +2883,14 @@ export class ESPLoader extends EventTarget {
               portInfo.usbProductId === 0x55d3;
 
             if (isCH343 || this._isCDCDevice) {
-              // CH343 and CDC devices: Use proven working values from auto_boot_ch343_working branch
-              // CRITICAL: Use multiples of 63 for avoiding SLIP errors
-              const maxTransferSize = (this.port as any).maxTransferSize || 128;
-              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 63 bytes
-              blockSize = baseBlockSize * 1; // 63 bytes
-              maxInFlight = baseBlockSize * 1; // 63 bytes
+              // CH343 and CDC devices: Adaptive speed - start with maximum, reduce on error
+              // CH343 has maxTransferSize=64, so baseBlockSize=31
+              const maxTransferSize = (this.port as any).maxTransferSize || 64;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes for CH343
+
+              // Use current adaptive multipliers (initialized at start of readFlash)
+              blockSize = baseBlockSize * this._adaptiveBlockMultiplier;
+              maxInFlight = baseBlockSize * this._adaptiveMaxInFlightMultiplier;
             } else {
               // CH340, CP2102: CRITICAL calculation based on maxTransferSize
               // Formula: blockSize = (maxTransferSize - 2) / 2
@@ -2999,27 +3013,23 @@ export class ESPLoader extends EventTarget {
 
           chunkSuccess = true;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Increase speed on successful chunks (WebUSB only)
-          // DISABLED for non-CDC chips - they are limited by USB packet size
+          // ADAPTIVE SPEED ADJUSTMENT: Gradually increase speed after successful chunks
+          // Start at maximum (~4096), reduce to minimum (31) on error, then scale up
           if (this.isWebUSB() && this._isCDCDevice && retryCount === 0) {
             this._consecutiveSuccessfulChunks++;
 
-            // After 2 consecutive successful chunks, try to increase speed (faster ramp-up)
+            // After 2 consecutive successful chunks, increase speed gradually
             if (this._consecutiveSuccessfulChunks >= 2) {
-              const maxTransferSize = (this.port as any).maxTransferSize || 128;
-              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+              const maxTransferSize = (this.port as any).maxTransferSize || 64;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
-              // Maximum safe multipliers for CDC devices
-              // CDC devices (Espressif Native USB): Can handle much higher values
-              // With baseBlockSize=31:
-              // - MAX_BLOCK: 31 * 32 = 992 bytes (tested stable on ESP32-C3)
-              // - MAX_INFLIGHT: 31 * 64 = 1984 bytes (tested stable on ESP32-C3)
-              const MAX_BLOCK_MULTIPLIER = 32;
-              const MAX_INFLIGHT_MULTIPLIER = 64;
+              // Maximum: ~4092 bytes (132 * 31), matching FLASH_SECTOR_SIZE
+              const MAX_BLOCK_MULTIPLIER = 132;
+              const MAX_INFLIGHT_MULTIPLIER = 264; // 2x blockSize
 
               let adjusted = false;
 
-              // Increase both simultaneously for faster ramp-up
+              // Increase both simultaneously - double each time
               if (this._adaptiveBlockMultiplier < MAX_BLOCK_MULTIPLIER) {
                 this._adaptiveBlockMultiplier = Math.min(
                   this._adaptiveBlockMultiplier * 2,
@@ -3055,45 +3065,34 @@ export class ESPLoader extends EventTarget {
         } catch (err) {
           retryCount++;
 
-          // ADAPTIVE SPEED ADJUSTMENT: Reduce speed on errors (CDC devices only)
-          // Non-CDC chips stay at fixed blockSize=31, maxInFlight=31
+          // ADAPTIVE SPEED ADJUSTMENT: Only reduce if we're NOT already at minimum
           if (this.isWebUSB() && this._isCDCDevice && retryCount === 1) {
-            // Only adjust on first retry to avoid over-correction
-            const maxTransferSize = (this.port as any).maxTransferSize || 128;
-            const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
+            // Only reduce if we're above minimum
+            if (
+              this._adaptiveBlockMultiplier > 1 ||
+              this._adaptiveMaxInFlightMultiplier > 1
+            ) {
+              // Reduce to minimum on error
+              this._adaptiveBlockMultiplier = 1; // 31 bytes (for CH343)
+              this._adaptiveMaxInFlightMultiplier = 1; // 31 bytes
+              this._consecutiveSuccessfulChunks = 0; // Reset success counter
 
-            let adjusted = false;
-
-            // Reduce maxInFlight first (less disruptive)
-            if (this._adaptiveMaxInFlightMultiplier > 1) {
-              this._adaptiveMaxInFlightMultiplier = Math.max(
-                Math.floor(this._adaptiveMaxInFlightMultiplier / 2),
-                1,
-              );
-              adjusted = true;
-            }
-            // Then reduce blockSize if needed
-            else if (this._adaptiveBlockMultiplier > 1) {
-              this._adaptiveBlockMultiplier = Math.max(
-                Math.floor(this._adaptiveBlockMultiplier / 2),
-                1,
-              );
-              adjusted = true;
-            }
-
-            if (adjusted) {
+              const maxTransferSize = (this.port as any).maxTransferSize || 64;
+              const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
               const newBlockSize =
                 baseBlockSize * this._adaptiveBlockMultiplier;
               const newMaxInFlight =
                 baseBlockSize * this._adaptiveMaxInFlightMultiplier;
-              this.logger.log(
-                `[Adaptive] Speed reduced due to error: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
-              );
-              this._lastAdaptiveAdjustment = Date.now();
-            }
 
-            // Reset success counter
-            this._consecutiveSuccessfulChunks = 0;
+              this.logger.log(
+                `[Adaptive] Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+              );
+            } else {
+              // Already at minimum and still failing - this is a real error
+              this.logger.log(
+                `[Adaptive] Error at minimum speed (blockSize=31, maxInFlight=31) - not a speed issue`,
+              );
+            }
           }
 
           // Check if it's a timeout error or SLIP error
