@@ -2804,16 +2804,16 @@ export class ESPLoader extends EventTarget {
         this._adaptiveBlockMultiplier = 8; // blockSize = 248 bytes
         this._adaptiveMaxInFlightMultiplier = 8; // maxInFlight = 248 bytes
         this._consecutiveSuccessfulChunks = 0;
-        this.logger.log(
-          `[Adaptive] CDC device - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
+        this.logger.debug(
+          `CDC device - Initialized: blockMultiplier=${this._adaptiveBlockMultiplier}, maxInFlightMultiplier=${this._adaptiveMaxInFlightMultiplier}`,
         );
       } else {
         // Non-CDC devices (CH340, CP2102): Fixed values, no adaptive adjustment
         this._adaptiveBlockMultiplier = 1; // blockSize = 31 bytes (fixed)
         this._adaptiveMaxInFlightMultiplier = 1; // maxInFlight = 31 bytes (fixed)
         this._consecutiveSuccessfulChunks = 0;
-        this.logger.log(
-          `[Adaptive] Non-CDC device - Fixed values: blockSize=31, maxInFlight=31`,
+        this.logger.debug(
+          `Non-CDC device - Fixed values: blockSize=31, maxInFlight=31`,
         );
       }
     }
@@ -2999,8 +2999,8 @@ export class ESPLoader extends EventTarget {
                   baseBlockSize * this._adaptiveBlockMultiplier;
                 const newMaxInFlight =
                   baseBlockSize * this._adaptiveMaxInFlightMultiplier;
-                this.logger.log(
-                  `[Adaptive] Speed increased: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+                this.logger.debug(
+                  `Speed increased: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
                 );
                 this._lastAdaptiveAdjustment = Date.now();
               }
@@ -3032,13 +3032,13 @@ export class ESPLoader extends EventTarget {
               const newMaxInFlight =
                 baseBlockSize * this._adaptiveMaxInFlightMultiplier;
 
-              this.logger.log(
-                `[Adaptive] Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
+              this.logger.debug(
+                `Error at higher speed - reduced to minimum: blockSize=${newBlockSize}, maxInFlight=${newMaxInFlight}`,
               );
             } else {
               // Already at minimum and still failing - this is a real error
-              this.logger.log(
-                `[Adaptive] Error at minimum speed (blockSize=31, maxInFlight=31) - not a speed issue`,
+              this.logger.debug(
+                `Error at minimum speed (blockSize=31, maxInFlight=31) - not a speed issue`,
               );
             }
           }
