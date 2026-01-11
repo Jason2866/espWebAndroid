@@ -732,15 +732,24 @@ class WebUSBSerial {
         }
         // CP2102 (Silicon Labs VID: 0x10c4)
         else if (vid === 0x10c4) {
-            const baudrateValue = Math.floor(0x384000 / baudRate);
-            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate} (value=0x${baudrateValue.toString(16)})...`);
+            // CP210x baudrate encoding (from Silicon Labs AN571)
+            // For CP2102/CP2103: Use direct 32-bit baudrate value
+            // Request: IFC_SET_BAUDRATE (0x1E)
+            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate}...`);
+            
+            // Encode baudrate as 32-bit little-endian value
+            const baudrateBuffer = new ArrayBuffer(4);
+            const baudrateView = new DataView(baudrateBuffer);
+            baudrateView.setUint32(0, baudRate, true); // little-endian
+            
             await this.device.controlTransferOut({
                 requestType: 'vendor',
-                recipient: 'device',
-                request: 0x01, // SET_BAUDRATE
-                value: baudrateValue,
-                index: 0x00
-            });
+                recipient: 'interface',
+                request: 0x1E, // IFC_SET_BAUDRATE
+                value: 0,
+                index: 0
+            }, baudrateBuffer);
+            
             this._log('[WebUSB CP2102] Baudrate changed successfully');
         }
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
