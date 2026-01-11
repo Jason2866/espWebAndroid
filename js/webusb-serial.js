@@ -42,6 +42,7 @@ class WebUSBSerial {
 
     /**
      * Request USB device (mimics navigator.serial.requestPort())
+     * @param {function|object} logger - Logger function or object with log() method
      * @param {boolean} forceNew - If true, forces selection of a new device (ignores already paired devices)
      */
     static async requestPort(logger = null, forceNew = false) {
@@ -52,6 +53,16 @@ class WebUSBSerial {
             { vendorId: 0x10C4 }, // CP210x
             { vendorId: 0x067B }  // PL2303
         ];
+
+        // Helper to call logger (supports both function and object with log() method)
+        const log = (msg) => {
+            if (!logger) return;
+            if (typeof logger === 'function') {
+                logger(msg);
+            } else if (typeof logger.log === 'function') {
+                logger.log(msg);
+            }
+        };
 
         let device;
 
@@ -65,21 +76,18 @@ class WebUSBSerial {
                 );
                 
                 if (device) {
-                    if (logger) {
-                        logger.log(`[WebUSB] Reusing previously authorized device (VID: 0x${device.vendorId.toString(16)})`);
-                    }
+                    log(`[WebUSB] Reusing previously authorized device (VID: 0x${device.vendorId.toString(16)})`);
                 }
             } catch (err) {
-                this._log('[WebUSB] Failed to get previously authorized devices:', err);
+                // Can't use this._log in static method, use console as fallback
+                console.warn('[WebUSB] Failed to get previously authorized devices:', err);
             }
         }
 
         // If no device found or forceNew is true, request a new device
         if (!device) {
             device = await navigator.usb.requestDevice({ filters });
-            if (logger) {
-                logger.log(`[WebUSB] New device selected (VID: 0x${device.vendorId.toString(16)})`);
-            }
+            log(`[WebUSB] New device selected (VID: 0x${device.vendorId.toString(16)})`);
         }
 
         const port = new WebUSBSerial(logger);
