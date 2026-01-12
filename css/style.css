@@ -1077,6 +1077,15 @@ div.clear {
     width: 60px;
   }
 
+  /* Adjust switch circle position for narrower tablet switches */
+  .onoffswitch-switch {
+    right: 38px; /* Move circle further LEFT when off (60px width vs 70px default) */
+  }
+
+  .onoffswitch-checkbox:checked + .onoffswitch-label .onoffswitch-switch {
+    right: 0px; /* Keep at 0 when on */
+  }
+
   .main {
     padding-top: 80px;
   }
@@ -1222,6 +1231,7 @@ div.clear {
 
   .header-content select {
     min-width: 90px;
+    height: 30px;
     font-size: 13px;
   }
 
@@ -1229,6 +1239,15 @@ div.clear {
     width: 50px;
     margin-left: 2px;
     margin-right: 2px;
+  }
+
+  /* Adjust switch circle position for narrower mobile switches */
+  .onoffswitch-switch {
+    right: 28px; /* Move circle further LEFT when off (50px width vs 70px default) */
+  }
+
+  .onoffswitch-checkbox:checked + .onoffswitch-label .onoffswitch-switch {
+    right: 0px; /* Keep at 0 when on */
   }
 
   .log-controls {

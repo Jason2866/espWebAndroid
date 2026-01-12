@@ -383,13 +383,11 @@ async function clickConnect() {
                     /Linux armv/i.test(platform) ||
                     /Linux aarch64/i.test(platform);
   
-  const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
-  console.log(`[Connect] ${platformMsg}`);
-  console.log(`[Connect] navigator.platform: ${platform}`);
-  console.log(`[Connect] isAndroid: ${isAndroid}`);
-  
-  // Also log to UI
-  logMsg(platformMsg);
+  // Only log platform details to UI in debug mode (avoid fingerprinting surface)
+  if (debugMode.checked) {
+    const platformMsg = `Platform: ${isAndroid ? 'Android' : 'Desktop'} (UA: ${userAgent.substring(0, 50)}...)`;
+    logMsg(platformMsg);
+  }
   logMsg(`Using: ${isAndroid ? 'WebUSB' : 'Web Serial'}`);
   
   let esploader;
