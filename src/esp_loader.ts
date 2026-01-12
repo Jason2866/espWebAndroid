@@ -62,8 +62,7 @@ import {
 } from "./const";
 import { getStubCode } from "./stubs";
 import { hexFormatter, sleep, slipEncode, toHex } from "./util";
-// @ts-expect-error pako ESM module doesn't have proper type definitions
-import { deflate } from "pako/dist/pako.esm.mjs";
+import { deflate } from "pako";
 import { pack, unpack } from "./struct";
 
 // Interface for WebUSB Serial Port (extends SerialPort with WebUSB-specific methods)
@@ -90,6 +89,7 @@ export class ESPLoader extends EventTarget {
   flashSize: string | null = null;
 
   __inputBuffer?: number[];
+  __inputBufferReadIndex?: number;
   __totalBytesRead?: number;
   private _currentBaudRate: number = ESP_ROM_BAUD;
   private _maxUSBSerialBaudrate?: number;
@@ -98,6 +98,7 @@ export class ESPLoader extends EventTarget {
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
+  private __abandonCurrentOperation: boolean = false;
 
   // Adaptive speed adjustment for flash read operations - DISABLED
   // Using fixed conservative values that work reliably
@@ -117,6 +118,51 @@ export class ESPLoader extends EventTarget {
 
   private get _inputBuffer(): number[] {
     return this._parent ? this._parent._inputBuffer : this.__inputBuffer!;
+  }
+
+  private get _inputBufferReadIndex(): number {
+    return this._parent
+      ? this._parent._inputBufferReadIndex
+      : this.__inputBufferReadIndex || 0;
+  }
+
+  private set _inputBufferReadIndex(value: number) {
+    if (this._parent) {
+      this._parent._inputBufferReadIndex = value;
+    } else {
+      this.__inputBufferReadIndex = value;
+    }
+  }
+
+  // Get available bytes in buffer (from read index to end)
+  private get _inputBufferAvailable(): number {
+    return this._inputBuffer.length - this._inputBufferReadIndex;
+  }
+
+  // Read one byte from buffer (ring-buffer style with index pointer)
+  private _readByte(): number | undefined {
+    if (this._inputBufferReadIndex >= this._inputBuffer.length) {
+      return undefined;
+    }
+    return this._inputBuffer[this._inputBufferReadIndex++];
+  }
+
+  // Clear input buffer and reset read index
+  private _clearInputBuffer(): void {
+    this._inputBuffer.length = 0;
+    this._inputBufferReadIndex = 0;
+  }
+
+  // Compact buffer when read index gets too large (prevent memory growth)
+  private _compactInputBuffer(): void {
+    if (
+      this._inputBufferReadIndex > 1000 &&
+      this._inputBufferReadIndex > this._inputBuffer.length / 2
+    ) {
+      // Remove already-read bytes and reset index
+      this._inputBuffer.splice(0, this._inputBufferReadIndex);
+      this._inputBufferReadIndex = 0;
+    }
   }
 
   private get _totalBytesRead(): number {
@@ -156,6 +202,20 @@ export class ESPLoader extends EventTarget {
       this._parent._isReconfiguring = value;
     } else {
       this.__isReconfiguring = value;
+    }
+  }
+
+  private get _abandonCurrentOperation(): boolean {
+    return this._parent
+      ? this._parent._abandonCurrentOperation
+      : this.__abandonCurrentOperation;
+  }
+
+  private set _abandonCurrentOperation(value: boolean) {
+    if (this._parent) {
+      this._parent._abandonCurrentOperation = value;
+    } else {
+      this.__abandonCurrentOperation = value;
     }
   }
 
@@ -283,6 +343,7 @@ export class ESPLoader extends EventTarget {
   async initialize() {
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
       this.__totalBytesRead = 0;
 
       // Detect and log USB-Serial chip info
@@ -387,7 +448,7 @@ export class ESPLoader extends EventTarget {
       await this.drainInputBuffer(200);
 
       // Clear input buffer and re-sync to recover from failed command
-      this._inputBuffer.length = 0;
+      this._clearInputBuffer();
       await sleep(SYNC_TIMEOUT);
 
       // Re-sync with the chip to ensure clean communication
@@ -1103,25 +1164,34 @@ export class ESPLoader extends EventTarget {
           continue;
         }
 
+        // Clear abandon flag before starting new strategy
+        this._abandonCurrentOperation = false;
+
         await strategy.fn();
 
-        // Try to sync after reset with timeout (3 seconds per strategy)
-        const syncPromise = this.sync();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Sync timeout")), 3000),
-        );
+        // Try to sync after reset with internally time-bounded sync (3 seconds per strategy)
+        const syncSuccess = await this.syncWithTimeout(3000);
 
-        await Promise.race([syncPromise, timeoutPromise]);
-
-        // If we get here, sync succeeded
-        this.logger.log(`Connected successfully with ${strategy.name} reset.`);
-
-        return;
+        if (syncSuccess) {
+          // Sync succeeded
+          this.logger.log(
+            `Connected successfully with ${strategy.name} reset.`,
+          );
+          return;
+        } else {
+          throw new Error("Sync timeout or abandoned");
+        }
       } catch (error) {
         lastError = error as Error;
         this.logger.log(
           `${strategy.name} reset failed: ${(error as Error).message}`,
         );
+
+        // Set abandon flag to stop any in-flight operations
+        this._abandonCurrentOperation = true;
+
+        // Wait a bit for in-flight operations to abort
+        await sleep(100);
 
         // If port got disconnected, we can't try more strategies
         if (!this.connected || !this.port.writable) {
@@ -1130,7 +1200,7 @@ export class ESPLoader extends EventTarget {
         }
 
         // Clear buffers before trying next strategy
-        this._inputBuffer.length = 0;
+        this._clearInputBuffer();
         await this.drainInputBuffer(200);
         await this.flushSerialBuffers();
       }
@@ -1384,6 +1454,13 @@ export class ESPLoader extends EventTarget {
       const startTime = Date.now();
 
       while (true) {
+        // Check abandon flag (for reset strategy timeout)
+        if (this._abandonCurrentOperation) {
+          throw new SlipReadError(
+            "Operation abandoned (reset strategy timeout)",
+          );
+        }
+
         // Check timeout
         if (Date.now() - startTime > timeout) {
           const waitingFor = partialPacket === null ? "header" : "content";
@@ -1391,15 +1468,15 @@ export class ESPLoader extends EventTarget {
         }
 
         // If no data available, wait a bit
-        if (this._inputBuffer.length === 0) {
+        if (this._inputBufferAvailable === 0) {
           await sleep(1);
           continue;
         }
 
         // Process all available bytes without going back to outer loop
         // This is critical for handling high-speed burst transfers
-        while (this._inputBuffer.length > 0) {
-          const b = this._inputBuffer.shift()!;
+        while (this._inputBufferAvailable > 0) {
+          const b = this._readByte()!;
 
           if (partialPacket === null) {
             // waiting for packet header
@@ -1445,6 +1522,8 @@ export class ESPLoader extends EventTarget {
               this.logger.debug(
                 "Received full packet: " + hexFormatter(partialPacket),
               );
+            // Compact buffer periodically to prevent memory growth
+            this._compactInputBuffer();
             return partialPacket;
           } else {
             // normal byte in packet
@@ -1456,11 +1535,18 @@ export class ESPLoader extends EventTarget {
       // Byte-by-byte version: Stable for non CDC USB-Serial adapters (CH340, CP2102, etc.)
       let readBytes: number[] = [];
       while (true) {
+        // Check abandon flag (for reset strategy timeout)
+        if (this._abandonCurrentOperation) {
+          throw new SlipReadError(
+            "Operation abandoned (reset strategy timeout)",
+          );
+        }
+
         const stamp = Date.now();
         readBytes = [];
         while (Date.now() - stamp < timeout) {
-          if (this._inputBuffer.length > 0) {
-            readBytes.push(this._inputBuffer.shift()!);
+          if (this._inputBufferAvailable > 0) {
+            readBytes.push(this._readByte()!);
             break;
           } else {
             // Reduced sleep time for faster response during high-speed transfers
@@ -1520,6 +1606,8 @@ export class ESPLoader extends EventTarget {
               this.logger.debug(
                 "Received full packet: " + hexFormatter(partialPacket),
               );
+            // Compact buffer periodically to prevent memory growth
+            this._compactInputBuffer();
             return partialPacket;
           } else {
             // normal byte in packet
@@ -1701,13 +1789,53 @@ export class ESPLoader extends EventTarget {
   }
 
   /**
+   * @name syncWithTimeout
+   * Sync with timeout that can be abandoned (for reset strategy loop)
+   * This is internally time-bounded and checks the abandon flag
+   */
+  async syncWithTimeout(timeoutMs: number): Promise<boolean> {
+    const startTime = Date.now();
+
+    for (let i = 0; i < 5; i++) {
+      // Check if we've exceeded the timeout
+      if (Date.now() - startTime > timeoutMs) {
+        return false;
+      }
+
+      // Check abandon flag
+      if (this._abandonCurrentOperation) {
+        return false;
+      }
+
+      this._clearInputBuffer();
+
+      try {
+        const response = await this._sync();
+        if (response) {
+          await sleep(SYNC_TIMEOUT);
+          return true;
+        }
+      } catch (e) {
+        // Check abandon flag after error
+        if (this._abandonCurrentOperation) {
+          return false;
+        }
+      }
+
+      await sleep(SYNC_TIMEOUT);
+    }
+
+    return false;
+  }
+
+  /**
    * @name sync
    * Put into ROM bootload mode & attempt to synchronize with the
    * ESP ROM bootloader, we will retry a few times
    */
   async sync() {
     for (let i = 0; i < 5; i++) {
-      this._inputBuffer.length = 0;
+      this._clearInputBuffer();
       const response = await this._sync();
       if (response) {
         await sleep(SYNC_TIMEOUT);
@@ -2485,6 +2613,7 @@ export class ESPLoader extends EventTarget {
 
       this.connected = false;
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
 
       // Wait for pending writes to complete
       try {
@@ -2555,6 +2684,7 @@ export class ESPLoader extends EventTarget {
 
       if (!this._parent) {
         this.__inputBuffer = [];
+        this.__inputBufferReadIndex = 0;
         this.__totalBytesRead = 0;
         this.readLoop();
       }
@@ -2631,8 +2761,8 @@ export class ESPLoader extends EventTarget {
     const drainTimeout = 100; // Short timeout for draining
 
     while (drained < bytesToDrain && Date.now() - drainStart < drainTimeout) {
-      if (this._inputBuffer.length > 0) {
-        const byte = this._inputBuffer.shift();
+      if (this._inputBufferAvailable > 0) {
+        const byte = this._readByte();
         if (byte !== undefined) {
           drained++;
         }
@@ -2649,6 +2779,7 @@ export class ESPLoader extends EventTarget {
     // Final clear of application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
   }
 
@@ -2661,6 +2792,7 @@ export class ESPLoader extends EventTarget {
     // Clear application buffer
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
 
     // Wait for any pending data
@@ -2669,6 +2801,7 @@ export class ESPLoader extends EventTarget {
     // Final clear
     if (!this._parent) {
       this.__inputBuffer = [];
+      this.__inputBufferReadIndex = 0;
     }
 
     this.logger.debug("Serial buffers flushed");

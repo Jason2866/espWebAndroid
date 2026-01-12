@@ -358,7 +358,11 @@ async function clickConnect() {
     }
     
     await espStub.disconnect();
-    await espStub.port.close();
+    try {
+      await espStub.port?.close?.();
+    } catch (e) {
+      // ignore double-close
+    }
     toggleUIConnected(false);
     espStub = undefined;
     
