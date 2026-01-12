@@ -76,6 +76,7 @@ class WebUSBSerial {
                 );
                 
                 if (device) {
+                    // Device already authorized, will reuse it
                 }
             } catch (err) {
                 // Can't use this._log in static method, use console as fallback
@@ -223,7 +224,7 @@ class WebUSBSerial {
 
                     // Use endpoint packet size for transfer length (Android prefers max-packet)
                     try {
-                        const inEp = alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
+                        const inEp = cand.alt.endpoints.find(ep => ep.type === 'bulk' && ep.direction === 'in');
                         if (inEp && inEp.packetSize) {
                             // Don't limit by packetSize - use our optimized value
                         } else {
@@ -484,7 +485,9 @@ class WebUSBSerial {
             } catch (e) {
                 this._log('Could not set control lines:', e.message);
             }
-        }        // Create streams only if they don't exist yet
+        }
+        
+        // Create streams only if they don't exist yet
         if (!this.readableStream || !this.writableStream) {
             this._createStreams();
         } else {

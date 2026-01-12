@@ -66,6 +66,17 @@ import { hexFormatter, sleep, slipEncode, toHex } from "./util";
 import { deflate } from "pako/dist/pako.esm.mjs";
 import { pack, unpack } from "./struct";
 
+// Interface for WebUSB Serial Port (extends SerialPort with WebUSB-specific methods)
+interface WebUSBSerialPort extends SerialPort {
+  isWebUSB?: boolean;
+  maxTransferSize?: number;
+  setSignals(signals: {
+    dataTerminalReady?: boolean;
+    requestToSend?: boolean;
+  }): Promise<void>;
+  setBaudRate(baudRate: number): Promise<void>;
+}
+
 export class ESPLoader extends EventTarget {
   chipFamily!: ChipFamily;
   chipName: string | null = null;
@@ -87,7 +98,6 @@ export class ESPLoader extends EventTarget {
   private _initializationSucceeded: boolean = false;
   private __commandLock: Promise<[number, number[]]> = Promise.resolve([0, []]);
   private __isReconfiguring: boolean = false;
-  private __bootloaderActive: boolean = false; // Track if bootloader is already active
 
   // Adaptive speed adjustment for flash read operations - DISABLED
   // Using fixed conservative values that work reliably
@@ -146,20 +156,6 @@ export class ESPLoader extends EventTarget {
       this._parent._isReconfiguring = value;
     } else {
       this.__isReconfiguring = value;
-    }
-  }
-
-  private get _bootloaderActive(): boolean {
-    return this._parent
-      ? this._parent._bootloaderActive
-      : this.__bootloaderActive;
-  }
-
-  private set _bootloaderActive(value: boolean) {
-    if (this._parent) {
-      this._parent._bootloaderActive = value;
-    } else {
-      this.__bootloaderActive = value;
     }
   }
 
@@ -631,22 +627,26 @@ export class ESPLoader extends EventTarget {
   // ============================================================================
 
   async setRTSWebUSB(state: boolean) {
-    await (this.port as any).setSignals({ requestToSend: state });
+    await (this.port as WebUSBSerialPort).setSignals({ requestToSend: state });
     // Work-around for adapters on Windows/Android using the usbser.sys driver:
     // generate a dummy change to DTR so that the set-control-line-state
     // request is sent with the updated RTS state and the same DTR state
     // This is critical for CP2102 and other USB-Serial adapters
-    await (this.port as any).setSignals({ dataTerminalReady: this.state_DTR });
+    await (this.port as WebUSBSerialPort).setSignals({
+      dataTerminalReady: this.state_DTR,
+    });
   }
 
   async setDTRWebUSB(state: boolean) {
     this.state_DTR = state;
-    await (this.port as any).setSignals({ dataTerminalReady: state });
+    await (this.port as WebUSBSerialPort).setSignals({
+      dataTerminalReady: state,
+    });
   }
 
   async setDTRandRTSWebUSB(dtr: boolean, rts: boolean) {
     this.state_DTR = dtr;
-    await (this.port as any).setSignals({
+    await (this.port as WebUSBSerialPort).setSignals({
       dataTerminalReady: dtr,
       requestToSend: rts,
     });
@@ -812,7 +812,7 @@ export class ESPLoader extends EventTarget {
    */
   private isWebUSB(): boolean {
     // WebUSBSerial class has isWebUSB flag - this is the most reliable check
-    return (this.port as any).isWebUSB === true;
+    return (this.port as WebUSBSerialPort).isWebUSB === true;
   }
 
   /**
@@ -839,6 +839,10 @@ export class ESPLoader extends EventTarget {
     if (this.isWebUSB()) {
       // For USB-Serial chips (CP2102, CH340, etc.), try inverted strategies first
       const isUSBSerialChip = !isUSBJTAGSerial && !isEspressifUSB;
+
+      // Detect specific chip types once
+      const isCP2102 = portInfo.usbVendorId === 0x10c4;
+      const isCH34x = portInfo.usbVendorId === 0x1a86;
 
       // Check for ESP32-S2 Native USB (VID: 0x303a, PID: 0x0002)
       const isESP32S2NativeUSB =
@@ -906,11 +910,6 @@ export class ESPLoader extends EventTarget {
 
       // For USB-Serial chips, try inverted strategies first
       if (isUSBSerialChip) {
-        // CH340/CH343 (VID: 0x1a86) - use UnixTight first
-        const isCH34x = portInfo.usbVendorId === 0x1a86;
-        // CP2102 (VID: 0x10c4) - needs standard (non-inverted) logic
-        const isCP2102 = portInfo.usbVendorId === 0x10c4;
-
         if (isCH34x) {
           // CH340/CH343: UnixTight works best (like CP2102)
           resetStrategies.push({
@@ -1017,8 +1016,6 @@ export class ESPLoader extends EventTarget {
       }
 
       // Add general fallback strategies only for non-CP2102 and non-ESP32-S2 Native USB chips
-      const isCP2102 = portInfo.usbVendorId === 0x10c4;
-
       if (!isCP2102 && !isESP32S2NativeUSB) {
         // Classic reset (for chips not handled above)
         if (portInfo.usbVendorId !== 0x1a86) {
@@ -1566,7 +1563,7 @@ export class ESPLoader extends EventTarget {
         throw new Error(`Invalid (unsupported) command ${toHex(opcode)}`);
       }
     }
-    throw "Response doesn't match request";
+    throw new Error("Response doesn't match request");
   }
 
   /**
@@ -1648,11 +1645,14 @@ export class ESPLoader extends EventTarget {
 
         // CH343 is a CDC device and MUST use close/reopen
         // Other chips (CH340, CP2102, FTDI) MUST use setBaudRate()
-        if (!isCH343 && typeof (this.port as any).setBaudRate === "function") {
+        if (
+          !isCH343 &&
+          typeof (this.port as WebUSBSerialPort).setBaudRate === "function"
+        ) {
           //          this.logger.log(
           //            `[WebUSB] Changing baudrate to ${baud} using setBaudRate()...`,
           //          );
-          await (this.port as any).setBaudRate(baud);
+          await (this.port as WebUSBSerialPort).setBaudRate(baud);
           //          this.logger.log(`[WebUSB] Baudrate changed to ${baud}`);
 
           // Give the chip time to adjust to new baudrate
@@ -1733,7 +1733,11 @@ export class ESPLoader extends EventTarget {
         if (data.length > 1 && data[0] == 0 && data[1] == 0) {
           return true;
         }
-      } catch (e) {}
+      } catch (e) {
+        if (this.debug) {
+          this.logger.debug(`Sync attempt ${i + 1} failed: ${e}`);
+        }
+      }
     }
     return false;
   }
@@ -2376,6 +2380,9 @@ export class ESPLoader extends EventTarget {
         },
         async () => {
           // Previous write failed, but still attempt this write
+          this.logger.debug(
+            "Previous write failed, attempting recovery for current write",
+          );
           if (!this.port.writable) {
             throw new Error("Port became unavailable during write");
           }
@@ -2452,6 +2459,7 @@ export class ESPLoader extends EventTarget {
       await new Promise((resolve) => {
         if (!this._reader) {
           resolve(undefined);
+          return;
         }
         this.addEventListener("disconnect", resolve, { once: true });
         this._reader!.cancel();
@@ -2584,10 +2592,11 @@ export class ESPLoader extends EventTarget {
         }
       }
 
-      // Copy stub state to this instance if we're a stub loader
-      if (this.IS_STUB) {
-        Object.assign(this, stubLoader);
-      }
+      // The stub is now running on the chip
+      // stubLoader has this instance as _parent, so all operations go through this
+      // We just need to mark this instance as running stub code
+      this.IS_STUB = true;
+
       this.logger.debug("Reconnection successful");
     } catch (err) {
       // Ensure flag is reset on error
@@ -2758,7 +2767,8 @@ export class ESPLoader extends EventTarget {
           if (this.isWebUSB()) {
             // WebUSB (Android): All devices use adaptive speed
             // All have maxTransferSize=64, baseBlockSize=31
-            const maxTransferSize = (this.port as any).maxTransferSize || 64;
+            const maxTransferSize =
+              (this.port as WebUSBSerialPort).maxTransferSize || 64;
             const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
             // Use current adaptive multipliers (initialized at start of readFlash)
@@ -2864,7 +2874,8 @@ export class ESPLoader extends EventTarget {
 
             // After 2 consecutive successful chunks, increase speed gradually
             if (this._consecutiveSuccessfulChunks >= 2) {
-              const maxTransferSize = (this.port as any).maxTransferSize || 64;
+              const maxTransferSize =
+                (this.port as WebUSBSerialPort).maxTransferSize || 64;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2); // 31 bytes
 
               // Maximum: blockSize=248 (8 * 31), maxInFlight=248 (8 * 31)
@@ -2923,7 +2934,8 @@ export class ESPLoader extends EventTarget {
               this._adaptiveMaxInFlightMultiplier = 1; // 31 bytes
               this._consecutiveSuccessfulChunks = 0; // Reset success counter
 
-              const maxTransferSize = (this.port as any).maxTransferSize || 64;
+              const maxTransferSize =
+                (this.port as WebUSBSerialPort).maxTransferSize || 64;
               const baseBlockSize = Math.floor((maxTransferSize - 2) / 2);
               const newBlockSize =
                 baseBlockSize * this._adaptiveBlockMultiplier;

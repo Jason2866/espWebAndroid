@@ -70,12 +70,12 @@ this.maxTransferSize = 512; // Optimized for Android
 
 ### Common Issues:
 
-**"Timeout waiting for packet header"**
+#### "Timeout waiting for packet header"
 - Streams not created → Check if streams are initialized
 - Transfer size too large → Already fixed (512 bytes)
 - Stub loader bug → Already fixed (patched loaders)
 
-**"Trying Classic reset" hangs**
+#### "Trying Classic reset" hangs
 - DTR/RTS timing → Already fixed (50ms delay)
 - Wrong interface → Check `controlInterface` value
 - USB-Serial chip issue → Try manual BOOT button
