@@ -16,20 +16,15 @@
 
 **Problem:**
 - Large transfers (64KB) can cause data loss on Android
-- Multiple small transfers arrive faster than WebUSB can queue new reads
+- Small buffer (64 bytes) with USB serial chips
 
 **Solution:**
-✅ Using 512 byte transfers (good balance with patched stub loaders)
+✅ Using different settings for CDC and serial USB chips
 
-**Configuration:**
-```javascript
-this.maxTransferSize = 512; // Optimized for Android
-```
-
-## 🔧 Current Implementation Status
+## 🔧 Current Implementation Status, done ✅
 
 ### ✅ Working:
-- CDC/JTAG (ESP32-S2, S3, C3, C6) - Native USB
+- CDC/JTAG (ESP32-S2, S3, C3, C5, C6, H2) - Native USB
 - Baudrate changes
 - Flash reading/writing
 - Stream management
@@ -39,7 +34,6 @@ this.maxTransferSize = 512; // Optimized for Android
 - iOS not supported (no WebUSB)
 - Firefox not supported (no WebUSB)
 - Some Android devices don't support USB OTG
-- Some USB-Serial chips have timing issues
 
 ## 📊 Tested Configurations
 
@@ -51,53 +45,28 @@ this.maxTransferSize = 512; // Optimized for Android
 | ESP32-C5 | Native USB | ✅ | Works perfectly |
 | ESP32-C6 | Native USB | ✅ | Works perfectly |
 | ESP32-H2 | Native USB | ✅ | Works perfectly |
-| ESP32 | CH343 | ✅ | Works |
-| ESP32 | CH340 | ✅ | Works |
-| ESP32 | CP2102 | ✅ | Works |
-| ESP32 | FTDI | ✅ | Works |
+| ESP32-x | CH343 | ✅ | Works perfectly |
+| ESP32-x | CH340 | ✅ | Works |
+| ESP32-x | CP2102 | ✅ | Works |
+| ESP32-x | FTDI | ? | not tested |
 
 ## 🎯 Recommendations
 
 ### For Best Experience:
-1. **Use ESP32-S3/C3/C6** with native USB (CDC/JTAG)
+1. **Use ESP32-S2/S3/C3/C5/C6/H2** with native USB (CDC/JTAG)
 2. **Use patched stub loaders** (already included)
-3. **Use good quality USB OTG cable**
+3. **Use known good quality USB cable**
 
 ### For USB-Serial Chips:
-1. **Start with 115200 baud**
-2. **Use shorter USB cable** (< 1m)
+1. **Start with 460800 baud**
+2. **Use short USB cable** (< 50cm)
 3. **Try different USB OTG adapters**
-
-### Common Issues:
-
-#### "Timeout waiting for packet header"
-- Streams not created → Check if streams are initialized
-- Transfer size too large → Already fixed (512 bytes)
-- Stub loader bug → Already fixed (patched loaders)
-
-#### "Trying Classic reset" hangs
-- DTR/RTS timing → Already fixed (50ms delay)
-- Wrong interface → Check `controlInterface` value
-- USB-Serial chip issue → Try manual BOOT button
-
-## 📝 Implementation Details
-
-### Transfer Size Calculation:
-```javascript
-// With patched stub loaders:
-maxTransferSize = 512; // Good balance
-
-// Without patched stub loaders (original):
-maxTransferSize = 64;  // Catch all small transfers
-```
 
 ### Not Planned:
 - iOS support (WebUSB not available)
 - Firefox support (WebUSB not available)
-- Accessory Mode (not needed for OTG)
 
 ## 📚 References
-- [g3gg0's ESP32 Flasher](https://github.com/g3gg0/esp32_flasher)
 - [WebUSB Specification](https://wicg.github.io/webusb/)
 - [USB CDC Class](https://www.usb.org/document-library/class-definitions-communication-devices-12)
 - [ESP-IDF USB Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/usb-serial-jtag-console.html)
@@ -111,4 +80,3 @@ maxTransferSize = 64;  // Catch all small transfers
 ---
 
 **Last Updated:** January 2026
-**Implementation:** js/webusb-serial.js

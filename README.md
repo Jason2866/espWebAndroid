@@ -44,8 +44,6 @@ ESP32Tool works natively on Android devices with USB OTG support!
 4. Grant USB permissions when prompted
 5. Flash and manage your ESP devices on the go!
 
-**For developers:** See [PWA-SETUP.md](PWA-SETUP.md) for PWA configuration details.
-
 ---
 
 ## 🛠️ Developer Quickstart
