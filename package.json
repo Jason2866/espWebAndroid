@@ -30,7 +30,7 @@
     "test-pwa": "npx serve . -p 5004"
   },
   "devDependencies": {
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.0.6",
     "eslint": "^9.39.2",
     "@eslint/js": "^9.39.2",
     "electron": "^39.2.5",
