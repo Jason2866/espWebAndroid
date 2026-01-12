@@ -343,6 +343,40 @@ function formatMacAddr(macAddr) {
     .join(":");
 }
 
+function toHex(value) {
+  return "0x" + value.toString(16).padStart(2, "0");
+}
+
+/**
+ * Parse flash size string (e.g., "256KB", "4MB") to bytes
+ * @param {string} sizeStr - Flash size string with unit (KB or MB)
+ * @returns {number} Size in bytes
+ */
+function parseFlashSize(sizeStr) {
+  if (!sizeStr || typeof sizeStr !== 'string') {
+    return 0;
+  }
+  
+  // Extract number and unit
+  const match = sizeStr.match(/^(\d+)(KB|MB)$/i);
+  if (!match) {
+    // If no unit, assume it's already in MB (legacy behavior)
+    const num = parseInt(sizeStr);
+    return isNaN(num) ? 0 : num * 1024 * 1024;
+  }
+  
+  const value = parseInt(match[1]);
+  const unit = match[2].toUpperCase();
+  
+  if (unit === 'KB') {
+    return value * 1024; // KB to bytes
+  } else if (unit === 'MB') {
+    return value * 1024 * 1024; // MB to bytes
+  }
+  
+  return 0;
+}
+
 /**
  * @name clickConnect
  * Click handler for the connect/disconnect button.
@@ -531,7 +565,7 @@ async function clickConnect() {
   
   // Set detected flash size in the read size field
   if (espStub.flashSize) {
-    const flashSizeBytes = parseInt(espStub.flashSize) * 1024 * 1024; // Convert MB to bytes
+    const flashSizeBytes = parseFlashSize(espStub.flashSize);
     readSize.value = "0x" + flashSizeBytes.toString(16);
   }
   
@@ -633,8 +667,8 @@ async function clickDetectFS() {
     butDetectFS.disabled = true;
     logMsg('Detecting ESP8266 filesystem...');
     
-    const flashSizeMB = parseInt(espStub.flashSize);
-    const flashSizeBytes = flashSizeMB * 1024 * 1024;
+    const flashSizeBytes = parseFlashSize(espStub.flashSize);
+    const flashSizeMB = flashSizeBytes / (1024 * 1024);
     const esptoolMod = await window.esptoolPackage;
     
     // Scan flash for filesystem signatures - optimized based on flash size
