@@ -37,7 +37,7 @@ for size in 72 96 128 144 152 192 384 512; do
     
     convert -size ${size}x${size} xc:${BG_COLOR} \
         -fill ${ACCENT_COLOR} -draw "circle $((size/2)),$((size/2)) $((size/2)),$((size/4))" \
-        -fill ${TEXT_COLOR} -pointsize ${fontsize} -font "Helvetica-Bold" \
+        -fill ${TEXT_COLOR} -pointsize ${fontsize} -font "DejaVu-Sans-Bold" \
         -gravity center -annotate +0-$((size/12)) "ESP32" \
         -pointsize $((fontsize/2)) -annotate +0+$((size/8)) "TOOL" \
         icons/icon-${size}.png
