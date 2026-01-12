@@ -107,7 +107,11 @@ self.addEventListener('fetch', (event) => {
             cache.put(request, responseClone);
           });
 
-          return response;
+        }).catch(() => {
+          // Network failed and not in cache - return a basic error response
+          // or optionally return an offline fallback
+          console.warn('[SW] Network request failed for:', request.url);
+          return new Response('Network unavailable', { status: 503 });
         });
       })
   );

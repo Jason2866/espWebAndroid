@@ -1572,10 +1572,8 @@ async function detectFilesystemType(offset, size) {
  */
 async function loadLittlefsModule() {
   if (!littlefsModulePromise) {
-    // Use absolute path from root for better compatibility with GitHub Pages
-    const basePath = window.location.pathname.endsWith('/') 
-      ? window.location.pathname 
-      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    // Derive base path from current document URL (works for all hosting layouts)
+    const basePath = new URL(".", window.location.href).pathname;
     const modulePath = `${basePath}src/wasm/littlefs/index.js`;
     
     littlefsModulePromise = import(modulePath)
@@ -1657,9 +1655,7 @@ async function openLittleFS(partition) {
     logMsg('Mounting LittleFS filesystem...');
     
     // Import constants from esptool module
-    const basePath = window.location.pathname.endsWith('/') 
-      ? window.location.pathname 
-      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const basePath = new URL(".", window.location.href).pathname;
     const esptoolModulePath = `${basePath}js/modules/esptool.js`;
     const { 
       LITTLEFS_BLOCK_SIZE_CANDIDATES,
@@ -1806,9 +1802,7 @@ async function openFatFS(partition) {
     }
     
     // Load FatFS module
-    const basePath = window.location.pathname.endsWith('/') 
-      ? window.location.pathname 
-      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const basePath = new URL(".", window.location.href).pathname;
     const modulePath = `${basePath}src/wasm/fatfs/index.js`;
     const module = await import(modulePath);
     const { createFatFSFromImage, createFatFS } = module;
@@ -1930,9 +1924,7 @@ async function openSPIFFS(partition) {
     logMsg(`Partition size: ${formatSize(partition.size)} (${partition.size} bytes)`);
     
     // Import SPIFFS module
-    const basePath = window.location.pathname.endsWith('/') 
-      ? window.location.pathname 
-      : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const basePath = new URL(".", window.location.href).pathname;
     const modulePath = `${basePath}js/modules/esptool.js`;
 
     const { 

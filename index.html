@@ -50,8 +50,8 @@
 
     <script>
       // Service Worker for PWA functionality
-      // Detect base path for GitHub Pages deployment
-      const basePath = window.location.pathname.match(/^\/[^\/]+\//)?.[0] || '/';
+      // Derive base path from current document URL (more robust than repo-name regex)
+      const basePath = new URL(".", window.location.href).pathname;
       
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
