@@ -2139,7 +2139,6 @@ async function openSPIFFS(partition) {
     refreshLittleFS();
     
     logMsg('SPIFFS filesystem opened successfully');
-    logMsg('Note: SPIFFS is a flat filesystem - directories are not supported.');
   } catch (e) {
     errorMsg(`Failed to open SPIFFS: ${e.message || e}`);
     console.error('SPIFFS open error:', e);

@@ -258,7 +258,7 @@ div.clear {
 .onoffswitch {
   display: inline-block;
   position: relative;
-  width: 70px;
+  width: 50px;
   margin-right: 5px;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -325,7 +325,7 @@ div.clear {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 23px;
+  right: 28px;
   border: 1px solid #900;
   border-radius: 15px;
   transition: all 0.3s ease-in 0s;
@@ -1074,16 +1074,7 @@ div.clear {
   }
 
   .onoffswitch {
-    width: 60px;
-  }
-
-  /* Adjust switch circle position for narrower tablet switches */
-  .onoffswitch-switch {
-    right: 38px; /* Move circle further LEFT when off (60px width vs 70px default) */
-  }
-
-  .onoffswitch-checkbox:checked + .onoffswitch-label .onoffswitch-switch {
-    right: 0px; /* Keep at 0 when on */
+    width: 50px;
   }
 
   .main {
@@ -1239,15 +1230,6 @@ div.clear {
     width: 50px;
     margin-left: 2px;
     margin-right: 2px;
-  }
-
-  /* Adjust switch circle position for narrower mobile switches */
-  .onoffswitch-switch {
-    right: 28px; /* Move circle further LEFT when off (50px width vs 70px default) */
-  }
-
-  .onoffswitch-checkbox:checked + .onoffswitch-label .onoffswitch-switch {
-    right: 0px; /* Keep at 0 when on */
   }
 
   .log-controls {
