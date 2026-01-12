@@ -36,6 +36,10 @@ class WebUSBSerial {
         // Command queue for serializing control transfers (critical for CP2102)
         this._commandQueue = Promise.resolve();
         
+        // Track current DTR/RTS state to preserve unspecified signals
+        this._currentDTR = false;
+        this._currentRTS = false;
+        
         // Logger function (defaults to console.log if not provided)
         this._log = logger || ((...args) => console.log(...args));
     }
@@ -309,14 +313,18 @@ class WebUSBSerial {
                 });
 
                 // Step 4: Set baudrate (vendor-specific for CP2102)
-                const baudrateValue = Math.floor(0x384000 / baudRate);
+                // Use IFC_SET_BAUDRATE (0x1E) with direct 32-bit baudrate value
+                const baudrateBuffer = new ArrayBuffer(4);
+                const baudrateView = new DataView(baudrateBuffer);
+                baudrateView.setUint32(0, baudRate, true); // little-endian
+                
                 await this.device.controlTransferOut({
                     requestType: 'vendor',
-                    recipient: 'device',
-                    request: 0x01, // SET_BAUDRATE
-                    value: baudrateValue,
-                    index: 0x00
-                });
+                    recipient: 'interface',
+                    request: 0x1E, // IFC_SET_BAUDRATE
+                    value: 0,
+                    index: 0
+                }, baudrateBuffer);
             } catch (e) {
                 this._log('[WebUSB CP2102] Initialization error:', e.message);
             }
@@ -503,7 +511,7 @@ class WebUSBSerial {
         if (!this._usbDisconnectHandler) {
             this._usbDisconnectHandler = (event) => {
                 if (event.device === this.device) {
-                    this._fireEvent('close');
+                    this._fireEvent('disconnect');
                     this._cleanup();
                 }
             };
@@ -610,9 +618,17 @@ class WebUSBSerial {
      * Set signals using CDC/ACM standard (for CH343, Native USB)
      */
     async _setSignalsCDC(signals) {
+        // Preserve current state for unspecified signals (Web Serial semantics)
+        const dtr = signals.dataTerminalReady !== undefined ? signals.dataTerminalReady : this._currentDTR;
+        const rts = signals.requestToSend !== undefined ? signals.requestToSend : this._currentRTS;
+        
+        // Update tracked state
+        this._currentDTR = dtr;
+        this._currentRTS = rts;
+        
         let value = 0;
-        value |= signals.dataTerminalReady ? 1 : 0;
-        value |= signals.requestToSend ? 2 : 0;
+        value |= dtr ? 1 : 0;
+        value |= rts ? 2 : 0;
 
         try {
             const result = await this.device.controlTransferOut({
@@ -638,16 +654,18 @@ class WebUSBSerial {
         // CP2102 uses vendor-specific request 0x07 (SET_MHS)
         // Bit 0: DTR, Bit 1: RTS, Bit 8-9: DTR/RTS mask
         
-        // Handle undefined values - only set what's explicitly provided
+        // Preserve current state for unspecified signals (Web Serial semantics)
+        const dtr = signals.dataTerminalReady !== undefined ? signals.dataTerminalReady : this._currentDTR;
+        const rts = signals.requestToSend !== undefined ? signals.requestToSend : this._currentRTS;
+        
+        // Update tracked state
+        this._currentDTR = dtr;
+        this._currentRTS = rts;
+        
+        // Build value with mask bits for both signals
         let value = 0;
-        
-        if (signals.dataTerminalReady !== undefined) {
-            value |= (signals.dataTerminalReady ? 1 : 0) | 0x100; // DTR + mask
-        }
-        
-        if (signals.requestToSend !== undefined) {
-            value |= (signals.requestToSend ? 2 : 0) | 0x200;     // RTS + mask
-        }
+        value |= (dtr ? 1 : 0) | 0x100; // DTR + mask
+        value |= (rts ? 2 : 0) | 0x200; // RTS + mask
 
         try {
             const result = await this.device.controlTransferOut({
@@ -670,10 +688,18 @@ class WebUSBSerial {
      * Set signals for CH340 (WCH vendor-specific)
      */
     async _setSignalsCH340(signals) {
+        // Preserve current state for unspecified signals (Web Serial semantics)
+        const dtr = signals.dataTerminalReady !== undefined ? signals.dataTerminalReady : this._currentDTR;
+        const rts = signals.requestToSend !== undefined ? signals.requestToSend : this._currentRTS;
+        
+        // Update tracked state
+        this._currentDTR = dtr;
+        this._currentRTS = rts;
+        
         // CH340 uses vendor-specific request 0xA4
         // Bit 5: DTR, Bit 6: RTS (inverted logic!)
         // Calculate value with bitwise NOT and mask to unsigned 16-bit
-        const value = (~((signals.dataTerminalReady ? 1 << 5 : 0) | (signals.requestToSend ? 1 << 6 : 0))) & 0xffff;
+        const value = (~((dtr ? 1 << 5 : 0) | (rts ? 1 << 6 : 0))) & 0xffff;
 
         try {
             const result = await this.device.controlTransferOut({
@@ -757,7 +783,6 @@ class WebUSBSerial {
             // CP210x baudrate encoding (from Silicon Labs AN571)
             // For CP2102/CP2103: Use direct 32-bit baudrate value
             // Request: IFC_SET_BAUDRATE (0x1E)
-//            this._log(`[WebUSB CP2102] Setting baudrate ${baudRate}...`);
             
             // Encode baudrate as 32-bit little-endian value
             const baudrateBuffer = new ArrayBuffer(4);
@@ -771,7 +796,6 @@ class WebUSBSerial {
                 value: 0,
                 index: 0
             }, baudrateBuffer);
-
         }
         // CH340 (WCH VID: 0x1a86, but not CH343 PID: 0x55d3)
         else if (vid === 0x1a86 && pid !== 0x55d3) {
