@@ -123,8 +123,8 @@ npm run deploy
 - [x] index.html aktualisiert
 - [ ] Icons erstellen (icons/*.png)
 - [ ] Optional: Screenshots erstellen (screenshots/*.png)
-- [ ] Auf HTTPS-Server deployen
-- [ ] Auf Android testen
+- [x] Auf HTTPS-Server deployen
+- [x] Auf Android testen
 
 ## 🔧 Anpassungen:
 
@@ -152,31 +152,7 @@ Erstelle `offline.html` und füge sie zu `CORE_ASSETS` hinzu.
 
 ## ⚠️ Wichtig:
 
-- **HTTPS erforderlich** (außer localhost)
-- **WebUSB benötigt USB OTG** auf Android
-- **Chrome 61+** erforderlich
-- Service Worker funktioniert nicht im Inkognito-Modus
-
-## 🐛 Troubleshooting:
-
-**PWA wird nicht angeboten:**
-- Prüfe HTTPS-Verbindung
-- Prüfe manifest.json Syntax
-- Prüfe ob Service Worker registriert ist
-- Mindestens 2 Besuche der Seite nötig
-
-**Service Worker lädt nicht:**
-- Prüfe Browser-Konsole auf Fehler
-- Prüfe Pfade in sw.js (relativ zu Root)
-- Cache leeren und neu laden
-
-**Icons werden nicht angezeigt:**
-- Prüfe ob icons/ Ordner existiert
-- Prüfe Dateipfade in manifest.json
-- Icons müssen PNG-Format haben
-
-## 📚 Weitere Infos:
-
-- [PWA Documentation](https://web.dev/progressive-web-apps/)
-- [WebUSB API](https://developer.chrome.com/docs/capabilities/usb)
-- [Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
+- #### HTTPS erforderlich (außer localhost)
+- #### WebUSB benötigt USB OTG auf Android
+- #### Chrome 61+ erforderlich
+- #### Service Worker funktioniert nicht im Inkognito-Modus

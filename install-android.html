@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32Tool auf Android installieren</title>
+    <title>Install ESP32Tool on Android</title>
     <style>
         * {
             margin: 0;
@@ -159,9 +159,143 @@
             }
         }
     </style>
+    <script>
+        // Detect browser language and show appropriate content
+        document.addEventListener('DOMContentLoaded', function() {
+            const userLang = navigator.language || navigator.userLanguage;
+            const isGerman = userLang.toLowerCase().startsWith('de');
+            
+            if (isGerman) {
+                document.getElementById('content-en').style.display = 'none';
+                document.getElementById('content-de').style.display = 'block';
+                document.documentElement.lang = 'de';
+                document.title = 'ESP32Tool auf Android installieren';
+            } else {
+                document.getElementById('content-en').style.display = 'block';
+                document.getElementById('content-de').style.display = 'none';
+                document.documentElement.lang = 'en';
+                document.title = 'Install ESP32Tool on Android';
+            }
+        });
+    </script>
 </head>
 <body>
-    <div class="container">
+    <!-- English Version -->
+    <div id="content-en" class="container">
+        <h1>📱 ESP32Tool for Android</h1>
+        <p class="subtitle">Flash and manage ESP devices directly on your Android smartphone!</p>
+        
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <h4>Fast</h4>
+                <p>Up to 10x faster than esptool.py</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📂</div>
+                <h4>Filesystem</h4>
+                <p>LittleFS, SPIFFS & FATFS support</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔌</div>
+                <h4>USB OTG</h4>
+                <p>Direct USB connection</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🌐</div>
+                <h4>Offline</h4>
+                <p>Works without internet</p>
+            </div>
+        </div>
+        
+        <div class="requirements">
+            <h3>⚙️ Requirements</h3>
+            <ul>
+                <li>Android 5.0+ (Lollipop or higher)</li>
+                <li>Chrome for Android (Version 61+, recommended: latest version)</li>
+                <li>USB OTG adapter or USB-C to USB-A cable</li>
+                <li>ESP32 or ESP8266 device</li>
+            </ul>
+        </div>
+        
+        <h2 style="margin-top: 40px; color: #667eea;">📋 Installation Guide</h2>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <h3>Open Chrome</h3>
+            <p>Open this page in <strong>Chrome for Android</strong> (not Firefox or Samsung Internet)</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <h3>Navigate to main page</h3>
+            <p>Click the button below to go to the ESP32Tool app</p>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="index.html" class="cta-button">🚀 Open ESP32Tool</a>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <h3>Install app</h3>
+            <p>Tap the <strong>menu (⋮)</strong> in the top right and select <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <h3>Confirm installation</h3>
+            <p>Confirm the installation. The app will appear on your home screen</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <h3>Connect ESP device</h3>
+            <p>Connect your ESP32/ESP8266 via USB OTG adapter to your Android device</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">6</span>
+            <h3>Grant USB permission</h3>
+            <p>Click "Connect" in the app and select your ESP device. Allow USB access when prompted</p>
+        </div>
+        
+        <div class="note">
+            <strong>💡 Tip:</strong> The app works without installation directly in the browser. However, installation provides a better app experience and offline functionality.
+        </div>
+        
+        <div class="note">
+            <strong>⚠️ Important:</strong> WebUSB only works with USB OTG (On-The-Go). Make sure your Android device supports USB Host Mode.
+        </div>
+        
+        <h2 style="margin-top: 40px; color: #667eea;">🎯 Getting Started</h2>
+        
+        <div class="step">
+            <h3>Flash firmware</h3>
+            <p>Select a .bin file, enter the offset (e.g. 0x0 for bootloader) and click "Program"</p>
+        </div>
+        
+        <div class="step">
+            <h3>Manage filesystem</h3>
+            <p>Click "Read Partition Table" and then "Detect FS and Open Manager" to manage files</p>
+        </div>
+        
+        <div class="step">
+            <h3>Read flash</h3>
+            <p>Enter address and size and click "Read Flash" to read the memory</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px; padding-top: 40px; border-top: 2px solid #eee;">
+            <p style="color: #666;">
+                <strong>ESP32Tool</strong> – Made with ❤️ by Adafruit, Nabu Casa & Johann Obermeier<br>
+                <a href="https://github.com/Jason2866/espWebAndroid" style="color: #667eea;">GitHub</a> | 
+                <a href="https://jason2866.github.io/espWebAndroid" style="color: #667eea;">Web Version</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- German Version -->
+    <div id="content-de" class="container" style="display: none;">
         <h1>📱 ESP32Tool für Android</h1>
         <p class="subtitle">Flashe und verwalte ESP-Geräte direkt auf deinem Android-Smartphone!</p>
         
