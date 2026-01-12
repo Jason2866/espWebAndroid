@@ -2517,7 +2517,12 @@ export class ESPLoader extends EventTarget {
 
           // Writer was likely cleaned up by previous error, create new one
           if (!this._writer) {
-            this._writer = this.port.writable.getWriter();
+            try {
+              this._writer = this.port.writable.getWriter();
+            } catch (err) {
+              this.logger.debug(`Failed to get writer in recovery: ${err}`);
+              throw new Error("Cannot acquire writer lock");
+            }
           }
 
           await this._writer.write(new Uint8Array(data));

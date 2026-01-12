@@ -97,8 +97,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Only cache successful responses (200-299 status codes)
-          if (response && response.ok && response.status >= 200 && response.status < 300) {
+          // Only cache successful responses
+          if (response && response.ok) {
             // Clone and cache the response
             const responseClone = response.clone();
             caches.open(RUNTIME_CACHE).then((cache) => {

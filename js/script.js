@@ -376,12 +376,8 @@ async function clickConnect() {
   const esploaderMod = await window.esptoolPackage;
 
   // Platform detection: Android always uses WebUSB, Desktop uses Web Serial
-  // Check multiple indicators for Android
   const userAgent = navigator.userAgent || '';
-  const platform = navigator.platform || '';
-  const isAndroid = /Android/i.test(userAgent) || 
-                    /Linux armv/i.test(platform) ||
-                    /Linux aarch64/i.test(platform);
+  const isAndroid = /Android/i.test(userAgent);
   
   // Only log platform details to UI in debug mode (avoid fingerprinting surface)
   if (debugMode.checked) {

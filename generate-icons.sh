@@ -50,7 +50,7 @@ convert icons/icon-192.png -resize 32x32 favicon.ico
 echo "  ✅ favicon.ico"
 
 # Erstelle Apple Touch Icon
-cp icons/icon-192.png apple-touch-icon.png
+convert icons/icon-192.png -resize 180x180 apple-touch-icon.png
 echo "  ✅ apple-touch-icon.png"
 
 # Erstelle Placeholder Screenshots
