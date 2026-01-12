@@ -1,19 +1,47 @@
 // Service Worker for ESP32Tool PWA
-const CACHE_NAME = 'esp32tool-v2.0.0';
+const CACHE_NAME = 'esp32tool-v2.0.1';
 const RUNTIME_CACHE = 'esp32tool-runtime';
 
 // Core files to cache on install (relative paths work for any deployment path)
+// This ensures the app works completely offline after installation
 const CORE_ASSETS = [
+  // App shell
   './',
   './index.html',
+  './install-android.html',
+  
+  // Stylesheets
   './css/style.css',
   './css/light.css',
   './css/dark.css',
+  
+  // JavaScript
   './js/script.js',
   './js/utilities.js',
   './js/webusb-serial.js',
   './js/modules/esptool.js',
-  './manifest.json'
+  
+  // PWA manifest
+  './manifest.json',
+  
+  // Icons (all sizes referenced in manifest)
+  './icons/icon-72.png',
+  './icons/icon-96.png',
+  './icons/icon-128.png',
+  './icons/icon-144.png',
+  './icons/icon-152.png',
+  './icons/icon-192.png',
+  './icons/icon-384.png',
+  './icons/icon-512.png',
+  './apple-touch-icon.png',
+  './favicon.ico',
+  
+  // WASM modules (required for filesystem operations)
+  './src/wasm/littlefs/index.js',
+  './src/wasm/littlefs/littlefs.js',
+  './src/wasm/littlefs/littlefs.wasm',
+  './src/wasm/fatfs/index.js',
+  './src/wasm/fatfs/fatfs.wasm'
 ];
 
 // Install event - cache core assets
@@ -107,6 +135,8 @@ self.addEventListener('fetch', (event) => {
             cache.put(request, responseClone);
           });
 
+          // CRITICAL: Return the response after caching
+          return response;
         }).catch(() => {
           // Network failed and not in cache - return a basic error response
           // or optionally return an offline fallback

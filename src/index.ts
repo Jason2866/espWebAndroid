@@ -33,6 +33,14 @@ export const connect = async (logger: Logger) => {
   if (typeof customRequestPort === "function") {
     port = await customRequestPort();
   } else {
+    // Check if Web Serial API is available
+    if (!navigator.serial) {
+      throw new Error(
+        "Web Serial API is not supported in this browser. " +
+          "Please use Chrome, Edge, or Opera on desktop, or Chrome on Android. " +
+          "Note: The page must be served over HTTPS or localhost.",
+      );
+    }
     port = await navigator.serial.requestPort();
   }
 

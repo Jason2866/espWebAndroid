@@ -4,7 +4,7 @@
   "description": "Flash & Read ESP devices using WebSerial and WebUSB",
   "start_url": "./",
   "scope": "./",
-  "id": "/?source=pwa",
+  "id": "./?source=pwa",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1a1a1a",
