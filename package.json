@@ -35,7 +35,7 @@
     "@eslint/js": "^9.39.2",
     "electron": "^39.2.5",
     "electron-squirrel-startup": "^1.0.1",
-    "@electron-forge/cli": "^7.6.0",
+    "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.6.0",
     "@electron-forge/maker-dmg": "^7.6.0",
     "@electron-forge/maker-rpm": "^7.6.0",
