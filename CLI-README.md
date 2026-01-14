@@ -1,8 +1,41 @@
 # ESP32Tool CLI
 
-Command-line interface for flashing ESP devices, providing esptool.py-like functionality using Node.js.
+Command-line interface for flashing ESP devices, providing esptool.py-like functionality.
 
-## Installation
+## Two Versions Available
+
+### 1. Standalone Electron CLI (Recommended)
+
+**Fully standalone - No Node.js installation required!**
+
+- Download from GitHub Releases
+- ~114MB per platform
+- Includes everything needed to run
+- Available as DMG (macOS), ZIP (all platforms)
+
+**Download & Usage:**
+
+```bash
+# macOS - Extract and run
+/Applications/esp32tool-cli.app/Contents/MacOS/esp32tool list-ports
+/Applications/esp32tool-cli.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
+
+# Linux - Extract ZIP and run
+./esp32tool-cli/esp32tool list-ports
+./esp32tool-cli/esp32tool --port /dev/ttyUSB0 chip-id
+
+# Windows - Extract ZIP and run
+esp32tool-cli\esp32tool.exe list-ports
+esp32tool-cli\esp32tool.exe --port COM3 chip-id
+```
+
+### 2. Node.js CLI (For Developers)
+
+**Requires Node.js 22.12.0 or higher**
+
+For development or if you prefer a smaller footprint and already have Node.js installed.
+
+## Installation (Node.js Version)
 
 ### Prerequisites
 
@@ -50,10 +83,25 @@ The CLI uses the same core ESP loader implementation as the web interface, ensur
 
 ## Usage
 
-### Basic Syntax
+### Standalone Electron CLI
+
+```bash
+# macOS
+/path/to/esp32tool [options] <command> [args...]
+
+# Linux
+./esp32tool [options] <command> [args...]
+
+# Windows
+esp32tool.exe [options] <command> [args...]
+```
+
+### Node.js CLI
 
 ```bash
 esp32tool [options] <command> [args...]
+# or if not globally installed:
+node dist/cli-fixed.js [options] <command> [args...]
 ```
 
 ### Options
@@ -231,7 +279,7 @@ DEBUG=1 esp32tool --port /dev/ttyUSB0 chip-id
 
 ## Comparison with esptool.py
 
-This CLI provides similar functionality to esptool.py but runs in Node.js:
+This CLI provides similar functionality to esptool.py:
 
 | esptool.py | esp32tool CLI |
 |------------|---------------|
@@ -242,6 +290,11 @@ This CLI provides similar functionality to esptool.py but runs in Node.js:
 | `esptool.py write-flash` | `esp32tool write-flash` |
 | `esptool.py erase-flash` | `esp32tool erase-flash` |
 | `esptool.py erase-region` | `esp32tool erase-region` |
+
+**Key Differences:**
+- **esptool.py**: Requires Python installation
+- **esp32tool (Electron)**: Fully standalone, no dependencies
+- **esp32tool (Node.js)**: Requires Node.js installation
 
 ## Troubleshooting
 
@@ -266,26 +319,43 @@ sudo usermod -a -G dialout $USER
 
 ## Development
 
+### Building Standalone Electron CLI
+
+```bash
+npm run build:cli-electron
+```
+
+Output: `out-cli/make/`
+
+### Building Node.js CLI
+
+```bash
+npm run build
+```
+
+Output: `dist/cli-fixed.js`
+
 ### Project Structure
 
 ```
 src/
-├── cli.ts                  # CLI entry point
+├── cli.ts                  # CLI entry point (shared by both versions)
 ├── node-serial-adapter.ts  # SerialPort adapter for Node.js
 ├── esp_loader.ts           # Core ESP loader (shared with web)
 └── ...
-```
-
-### Building
-
-```bash
-npm run build:cli
+electron/
+├── main.cjs                # GUI app entry point
+└── cli-main.cjs            # CLI app entry point (Electron-based)
 ```
 
 ### Testing
 
 ```bash
-# Test CLI locally
-node dist/cli.js list-ports
-node dist/cli.js --port /dev/ttyUSB0 chip-id
+# Test Node.js CLI locally
+node dist/cli-fixed.js list-ports
+node dist/cli-fixed.js --port /dev/ttyUSB0 chip-id
+
+# Test Electron CLI locally
+npm run build:cli-electron
+out-cli/esp32tool-cli.app/Contents/MacOS/esp32tool list-ports
 ```
