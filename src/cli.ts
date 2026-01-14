@@ -162,6 +162,9 @@ async function connectToDevice(
 
     // Create Web Serial API compatible adapter
     const webPort = createNodeSerialAdapter(nodePort, cliLogger);
+    
+    // Initialize the adapter's streams
+    await webPort.open({ baudRate });
 
     // Create ESPLoader instance
     const esploader = new ESPLoader(webPort as any, cliLogger);

@@ -277,6 +277,7 @@ const ESP_SYNC = 0x08;
 const ESP_WRITE_REG = 0x09;
 const ESP_READ_REG = 0x0a;
 const ESP_ERASE_FLASH = 0xd0;
+const ESP_ERASE_REGION = 0xd1;
 const ESP_READ_FLASH = 0xd2;
 const ESP_SPI_ATTACH = 0x0d;
 const ESP_CHANGE_BAUDRATE = 0x0f;
@@ -7398,7 +7399,7 @@ class EspStubLoader extends ESPLoader {
     async eraseRegion(offset, size) {
         const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
         const buffer = pack("<II", offset, size);
-        await this.checkCommand(ESP_ERASE_FLASH, buffer, 0, timeout);
+        await this.checkCommand(ESP_ERASE_REGION, buffer, 0, timeout);
     }
 }
 

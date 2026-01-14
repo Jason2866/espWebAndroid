@@ -42,6 +42,7 @@ import {
   USB_RAM_BLOCK,
   ChipFamily,
   ESP_ERASE_FLASH,
+  ESP_ERASE_REGION,
   ESP_READ_FLASH,
   CHIP_ERASE_TIMEOUT,
   FLASH_READ_TIMEOUT,
@@ -3310,6 +3311,6 @@ class EspStubLoader extends ESPLoader {
   async eraseRegion(offset: number, size: number) {
     const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
     const buffer = pack("<II", offset, size);
-    await this.checkCommand(ESP_ERASE_FLASH, buffer, 0, timeout);
+    await this.checkCommand(ESP_ERASE_REGION, buffer, 0, timeout);
   }
 }
