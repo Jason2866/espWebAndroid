@@ -167,24 +167,36 @@ jobs:
             
             **macOS:**
             ```bash
-            # Extract DMG or ZIP
-            # Run from terminal
-            /Applications/esp32tool-cli.app/Contents/MacOS/esp32tool list-ports
-            /Applications/esp32tool-cli.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
+            # Install: Open DMG and drag to /Applications
+            # Run from terminal:
+            /Applications/ESP32Tool.app/Contents/MacOS/esp32tool list-ports
+            /Applications/ESP32Tool.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
+            
+            # Optional: Create symlink for easier access
+            sudo ln -s /Applications/ESP32Tool.app/Contents/MacOS/esp32tool /usr/local/bin/esp32tool
+            # Then simply:
+            esp32tool list-ports
             ```
             
             **Linux:**
             ```bash
-            # Extract ZIP
-            ./esp32tool-cli/esp32tool list-ports
-            ./esp32tool-cli/esp32tool --port /dev/ttyUSB0 chip-id
+            # Extract ZIP and run
+            unzip ESP32Tool-CLI-*.zip
+            cd ESP32Tool-linux-*/
+            ./esp32tool list-ports
+            ./esp32tool --port /dev/ttyUSB0 chip-id
+            
+            # Optional: Install system-wide
+            sudo ln -s $(pwd)/esp32tool /usr/local/bin/esp32tool
             ```
             
             **Windows:**
             ```cmd
-            # Extract ZIP
-            esp32tool-cli\esp32tool.exe list-ports
-            esp32tool-cli\esp32tool.exe --port COM3 chip-id
+            # Extract ZIP and run from extracted folder
+            esp32tool.exe list-ports
+            esp32tool.exe --port COM3 chip-id
+            
+            # Optional: Add folder to PATH for system-wide access
             ```
           draft: false
           prerelease: false

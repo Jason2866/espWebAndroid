@@ -13,20 +13,51 @@ Command-line interface for flashing ESP devices, providing esptool.py-like funct
 - Includes everything needed to run
 - Available as DMG (macOS), ZIP (all platforms)
 
-**Download & Usage:**
+**Installation & Usage:**
 
+**macOS:**
 ```bash
-# macOS - Extract and run
-/Applications/esp32tool-cli.app/Contents/MacOS/esp32tool list-ports
-/Applications/esp32tool-cli.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
+# Option 1: Install to Applications (recommended)
+# Open the DMG and drag ESP32Tool.app to /Applications
+# Then run from terminal:
+/Applications/ESP32Tool.app/Contents/MacOS/esp32tool list-ports
+/Applications/ESP32Tool.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
 
-# Linux - Extract ZIP and run
-./esp32tool-cli/esp32tool list-ports
-./esp32tool-cli/esp32tool --port /dev/ttyUSB0 chip-id
+# Option 2: Create a symlink for easier access
+sudo ln -s /Applications/ESP32Tool.app/Contents/MacOS/esp32tool /usr/local/bin/esp32tool
+# Then simply use:
+esp32tool list-ports
+esp32tool --port /dev/ttyUSB0 chip-id
 
-# Windows - Extract ZIP and run
-esp32tool-cli\esp32tool.exe list-ports
-esp32tool-cli\esp32tool.exe --port COM3 chip-id
+# Option 3: Extract ZIP and run directly
+unzip ESP32Tool-CLI-*.zip
+./ESP32Tool.app/Contents/MacOS/esp32tool list-ports
+```
+
+**Linux:**
+```bash
+# Extract ZIP
+unzip ESP32Tool-CLI-*.zip
+cd ESP32Tool-linux-*/
+
+# Run the executable
+./esp32tool list-ports
+./esp32tool --port /dev/ttyUSB0 chip-id
+
+# Optional: Create symlink for system-wide access
+sudo ln -s $(pwd)/esp32tool /usr/local/bin/esp32tool
+```
+
+**Windows:**
+```bash
+# Extract ZIP
+# Navigate to extracted folder
+# Run from Command Prompt or PowerShell:
+esp32tool.exe list-ports
+esp32tool.exe --port COM3 chip-id
+
+# Optional: Add to PATH for system-wide access
+# Add the extracted folder to your system PATH environment variable
 ```
 
 ### 2. Node.js CLI (For Developers)
