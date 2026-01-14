@@ -618,23 +618,15 @@ export class ESPLoader extends EventTarget {
    * Get MAC address from efuses
    */
   async getMacAddress(): Promise<string> {
-    // MAC address is stored in efuses, which we already read during initialization
-    const mac0 = this._efuses[0];
-    const mac1 = this._efuses[1];
-
-    // Extract MAC address bytes (6 bytes total)
-    // MAC is stored in little-endian format across two 32-bit words
-    const macBytes = [
-      (mac1 >> 8) & 0xff,
-      (mac1 >> 0) & 0xff,
-      (mac0 >> 24) & 0xff,
-      (mac0 >> 16) & 0xff,
-      (mac0 >> 8) & 0xff,
-      (mac0 >> 0) & 0xff,
-    ];
-
-    // Format as XX:XX:XX:XX:XX:XX
-    return macBytes.map((b) => b.toString(16).padStart(2, "0")).join(":");
+    if (!this._initializationSucceeded) {
+      throw new Error(
+        "getMacAddress() requires initialize() to have completed successfully",
+      );
+    }
+    const macBytes = this.macAddr(); // chip-family-aware
+    return macBytes
+      .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+      .join(":");
   }
 
   /**
@@ -3309,6 +3301,45 @@ class EspStubLoader extends ESPLoader {
    * Erase a specific region of flash
    */
   async eraseRegion(offset: number, size: number) {
+    // Validate inputs
+    if (offset < 0) {
+      throw new Error(`Invalid offset: ${offset} (must be non-negative)`);
+    }
+    if (size < 0) {
+      throw new Error(`Invalid size: ${size} (must be non-negative)`);
+    }
+    
+    // No-op for zero size
+    if (size === 0) {
+      this.logger.log("eraseRegion: size is 0, skipping erase");
+      return;
+    }
+
+    // Check for sector alignment
+    if (offset % FLASH_SECTOR_SIZE !== 0) {
+      throw new Error(
+        `Offset ${offset} (0x${offset.toString(16)}) is not aligned to flash sector size ${FLASH_SECTOR_SIZE} (0x${FLASH_SECTOR_SIZE.toString(16)})`,
+      );
+    }
+    if (size % FLASH_SECTOR_SIZE !== 0) {
+      throw new Error(
+        `Size ${size} (0x${size.toString(16)}) is not aligned to flash sector size ${FLASH_SECTOR_SIZE} (0x${FLASH_SECTOR_SIZE.toString(16)})`,
+      );
+    }
+
+    // Check for reasonable bounds (prevent wrapping in pack)
+    const maxValue = 0xffffffff; // 32-bit unsigned max
+    if (offset > maxValue) {
+      throw new Error(
+        `Offset ${offset} exceeds maximum value ${maxValue}`,
+      );
+    }
+    if (size > maxValue) {
+      throw new Error(
+        `Size ${size} exceeds maximum value ${maxValue}`,
+      );
+    }
+
     const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
     const buffer = pack("<II", offset, size);
     await this.checkCommand(ESP_ERASE_REGION, buffer, 0, timeout);

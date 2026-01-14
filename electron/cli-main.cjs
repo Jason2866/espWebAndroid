@@ -25,7 +25,7 @@ app.whenReady().then(async () => {
     // Set process.argv to match CLI expectations
     // In packaged app: argv[0] is the executable path
     // We want: ['node', 'esp32tool', ...actualArgs]
-    const actualArgs = app.isPackaged ? cliArgs : cliArgs;
+    const actualArgs = cliArgs;
     process.argv = ['node', 'esp32tool', ...actualArgs];
     
     // Import CLI module

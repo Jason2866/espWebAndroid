@@ -58,9 +58,22 @@ function parseArgs(): CLIArgs {
     const arg = args[i];
 
     if (arg === "--port" || arg === "-p") {
+      if (i + 1 >= args.length) {
+        console.error("Error: --port requires a value");
+        process.exit(1);
+      }
       result.port = args[++i];
     } else if (arg === "--baud" || arg === "-b") {
-      result.baudRate = parseInt(args[++i], 10);
+      if (i + 1 >= args.length) {
+        console.error("Error: --baud requires a value");
+        process.exit(1);
+      }
+      const baud = parseInt(args[++i], 10);
+      if (isNaN(baud) || baud <= 0) {
+        console.error("Error: --baud must be a positive integer");
+        process.exit(1);
+      }
+      result.baudRate = baud;
     } else if (arg === "--help" || arg === "-h") {
       showHelp();
       process.exit(0);
@@ -141,12 +154,15 @@ async function connectToDevice(
 
   cliLogger.log(`Connecting to ${portPath} at ${baudRate} baud...`);
 
+  let nodePort: any = null;
+  let webPort: any = null;
+
   try {
     // Import serialport package dynamically
     const { SerialPort } = await import("serialport");
 
     // Create Node.js SerialPort instance
-    const nodePort = new SerialPort({
+    nodePort = new SerialPort({
       path: portPath,
       baudRate: baudRate,
       autoOpen: false,
@@ -161,7 +177,7 @@ async function connectToDevice(
     });
 
     // Create Web Serial API compatible adapter
-    const webPort = createNodeSerialAdapter(nodePort, cliLogger);
+    webPort = createNodeSerialAdapter(nodePort, cliLogger);
 
     // Initialize the adapter's streams
     await webPort.open({ baudRate });
@@ -176,6 +192,22 @@ async function connectToDevice(
 
     return esploader;
   } catch (err: any) {
+    // Clean up port on failure
+    if (webPort) {
+      try {
+        await webPort.close();
+      } catch (closeErr) {
+        // Ignore close errors
+      }
+    }
+    if (nodePort && nodePort.isOpen) {
+      try {
+        nodePort.close();
+      } catch (closeErr) {
+        // Ignore close errors
+      }
+    }
+
     if (
       err.code === "ERR_MODULE_NOT_FOUND" ||
       err.code === "MODULE_NOT_FOUND"
@@ -249,8 +281,14 @@ async function cmdWriteFlash(
   const stub = await esploader.runStub();
 
   // Write flash using the stub's flash methods
+  // Create a proper ArrayBuffer from the Buffer to avoid byteOffset issues
+  // Node.js Buffer can share an underlying ArrayBuffer with non-zero byteOffset
+  const arrayBuffer = fileData.buffer.slice(
+    fileData.byteOffset,
+    fileData.byteOffset + fileData.byteLength,
+  );
   await stub.flashData(
-    fileData.buffer as ArrayBuffer,
+    arrayBuffer,
     (bytesWritten: number, totalBytes: number) => {
       const percent = Math.round((bytesWritten / totalBytes) * 100);
       process.stdout.write(
