@@ -58,15 +58,15 @@ jobs:
       - name: Build TypeScript and Rollup
         run: npm run prepublishOnly
 
-      - name: Build CLI binaries
-        run: npm run build:binary
-
-      - name: Build Electron app
+      - name: Build Electron GUI app
         run: npm run make -- --arch=${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # macOS: Upload DMG and CLI binary
+      - name: Build Electron CLI app
+        run: npm run build:cli-electron
+
+      # macOS: Upload DMG and CLI artifacts
       - name: Upload macOS artifacts
         if: matrix.platform == 'darwin'
         uses: actions/upload-artifact@v6
@@ -74,10 +74,12 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: |
             out/make/*.dmg
-            binaries/esp32tool-macos*
+            out/make/zip/**/*.zip
+            out-cli/make/*.dmg
+            out-cli/make/zip/**/*.zip
           retention-days: 5
 
-      # Windows: Upload Squirrel installer, ZIP, and CLI binary
+      # Windows: Upload Squirrel installer, ZIP, and CLI artifacts
       - name: Upload Windows artifacts
         if: matrix.platform == 'win32'
         uses: actions/upload-artifact@v6
@@ -86,10 +88,10 @@ jobs:
           path: |
             out/make/squirrel.windows/**/*.exe
             out/make/zip/**/*.zip
-            binaries/esp32tool-win-x64.zip
+            out-cli/make/zip/**/*.zip
           retention-days: 5
 
-      # Linux: Upload DEB, RPM, and CLI binary
+      # Linux: Upload DEB, RPM, and CLI artifacts
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v6
@@ -99,7 +101,7 @@ jobs:
             out/make/deb/**/*.deb
             out/make/rpm/**/*.rpm
             out/make/zip/**/*.zip
-            binaries/esp32tool-linux-x64*
+            out-cli/make/zip/**/*.zip
           retention-days: 5
 
   release:
@@ -133,20 +135,19 @@ jobs:
             
             | Platform | Architecture | File |
             |----------|--------------|------|
-            | macOS | Apple Silicon | `*.arm64.dmg` |
-            | macOS | Intel | `*.x64.dmg` |
-            | Windows | x64 | `*.exe` / `*.zip` |
-            | Linux | x64 | `*.deb` / `*.rpm` / `*.zip` |
+            | macOS | Apple Silicon | `ESP32Tool-*-arm64.dmg` |
+            | macOS | Intel | `ESP32Tool-*-x64.dmg` |
+            | Windows | x64 | `*.exe` / `ESP32Tool-*.zip` |
+            | Linux | x64 | `*.deb` / `*.rpm` / `ESP32Tool-*.zip` |
             
-            #### CLI Tools (Command Line)
+            #### Electron CLI Tools (Standalone, No Node.js Required!)
             
-            **⚠️ Requires Node.js 18 or higher to be installed on your system**
-            
-            | Platform | File | 
-            |----------|------|
-            | macOS | `esp32tool-macos` |
-            | Linux | `esp32tool-linux-x64` |
-            | Windows | `esp32tool-win-x64.zip` |
+            | Platform | File | Size |
+            |----------|------|------|
+            | macOS | `ESP32Tool-CLI-*-arm64.dmg` / `.zip` | ~114MB |
+            | macOS | `ESP32Tool-CLI-*-x64.dmg` / `.zip` | ~114MB |
+            | Linux | `ESP32Tool-CLI-*.zip` | ~114MB |
+            | Windows | `ESP32Tool-CLI-*.zip` | ~114MB |
             
             ### Installation
             
@@ -162,23 +163,28 @@ jobs:
             
             #### CLI Tools
             
-            **Prerequisites:** Node.js 18 or higher must be installed. Download from [nodejs.org](https://nodejs.org/)
+            **Standalone Electron-based CLI - No Node.js installation required!**
             
-            **macOS/Linux:**
+            **macOS:**
             ```bash
-            # Download and make executable
-            chmod +x esp32tool-macos  # or esp32tool-linux-x64
+            # Extract DMG or ZIP
+            # Run from terminal
+            /Applications/esp32tool-cli.app/Contents/MacOS/esp32tool list-ports
+            /Applications/esp32tool-cli.app/Contents/MacOS/esp32tool --port /dev/ttyUSB0 chip-id
+            ```
             
-            # Run commands
-            ./esp32tool-macos list-ports
-            ./esp32tool-macos --port /dev/ttyUSB0 chip-id
+            **Linux:**
+            ```bash
+            # Extract ZIP
+            ./esp32tool-cli/esp32tool list-ports
+            ./esp32tool-cli/esp32tool --port /dev/ttyUSB0 chip-id
             ```
             
             **Windows:**
             ```cmd
-            # Extract zip and run
-            esp32tool.bat list-ports
-            esp32tool.bat --port COM3 chip-id
+            # Extract ZIP
+            esp32tool-cli\esp32tool.exe list-ports
+            esp32tool-cli\esp32tool.exe --port COM3 chip-id
             ```
           draft: false
           prerelease: false
@@ -188,7 +194,5 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/*.zip
-            artifacts/**/esp32tool-macos*
-            artifacts/**/esp32tool-linux-x64*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
