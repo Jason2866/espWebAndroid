@@ -88,6 +88,34 @@ function parseArgs(): CLIArgs {
   return result;
 }
 
+function parseHexValue(value: string, paramName: string): number {
+  // Remove optional 0x prefix
+  const cleanValue = value.toLowerCase().startsWith("0x")
+    ? value.slice(2)
+    : value;
+
+  // Validate hex format
+  if (!/^[0-9a-f]+$/i.test(cleanValue)) {
+    throw new Error(
+      `Invalid ${paramName}: '${value}' is not a valid hexadecimal value`,
+    );
+  }
+
+  const parsed = parseInt(cleanValue, 16);
+
+  if (isNaN(parsed)) {
+    throw new Error(
+      `Invalid ${paramName}: '${value}' could not be parsed as hexadecimal`,
+    );
+  }
+
+  if (parsed < 0) {
+    throw new Error(`Invalid ${paramName}: '${value}' must be non-negative`);
+  }
+
+  return parsed;
+}
+
 function showHelp() {
   console.log(`
 ESP32Tool CLI - Flash ESP devices via WebSerial/WebUSB
@@ -402,8 +430,8 @@ async function main() {
         if (cliArgs.args.length < 3) {
           throw new Error("read-flash requires: <offset> <size> <filename>");
         }
-        const offset = parseInt(cliArgs.args[0], 16);
-        const size = parseInt(cliArgs.args[1], 16);
+        const offset = parseHexValue(cliArgs.args[0], "offset");
+        const size = parseHexValue(cliArgs.args[1], "size");
         const filename = cliArgs.args[2];
         await cmdReadFlash(esploader, offset, size, filename);
         break;
@@ -413,7 +441,7 @@ async function main() {
         if (cliArgs.args.length < 2) {
           throw new Error("write-flash requires: <offset> <filename>");
         }
-        const offset = parseInt(cliArgs.args[0], 16);
+        const offset = parseHexValue(cliArgs.args[0], "offset");
         const filename = cliArgs.args[1];
         await cmdWriteFlash(esploader, offset, filename);
         break;
@@ -427,8 +455,8 @@ async function main() {
         if (cliArgs.args.length < 2) {
           throw new Error("erase-region requires: <offset> <size>");
         }
-        const offset = parseInt(cliArgs.args[0], 16);
-        const size = parseInt(cliArgs.args[1], 16);
+        const offset = parseHexValue(cliArgs.args[0], "offset");
+        const size = parseHexValue(cliArgs.args[1], "size");
         await cmdEraseRegion(esploader, offset, size);
         break;
       }
@@ -437,7 +465,7 @@ async function main() {
         if (cliArgs.args.length < 2) {
           throw new Error("verify-flash requires: <offset> <filename>");
         }
-        const offset = parseInt(cliArgs.args[0], 16);
+        const offset = parseHexValue(cliArgs.args[0], "offset");
         const filename = cliArgs.args[1];
         await cmdVerifyFlash(esploader, offset, filename);
         break;
