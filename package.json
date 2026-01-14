@@ -36,13 +36,13 @@
     "test-pwa": "npx serve . -p 5004"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.6.0",
-    "@electron-forge/maker-deb": "^7.6.0",
-    "@electron-forge/maker-dmg": "^7.6.0",
-    "@electron-forge/maker-rpm": "^7.6.0",
-    "@electron-forge/maker-squirrel": "^7.6.0",
-    "@electron-forge/maker-zip": "^7.6.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@electron/fuses": "^2.0.0",
     "@eslint/js": "^9.39.2",
     "@rollup/plugin-json": "^6.1.0",
@@ -63,7 +63,7 @@
     "rollup": "^4.53.5",
     "serve": "^14.2.4",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.52.0"
+    "typescript-eslint": "^8.53.0"
   },
   "dependencies": {
     "pako": "^2.1.0",
