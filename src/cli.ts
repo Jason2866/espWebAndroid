@@ -391,6 +391,8 @@ async function cmdVerifyFlash(
 async function main() {
   const cliArgs = parseArgs();
 
+  let esploader: ESPLoader | null = null;
+
   try {
     // Special command: list-ports (doesn't need device connection)
     if (cliArgs.command === "list-ports") {
@@ -410,7 +412,7 @@ async function main() {
     }
 
     // Connect to device
-    const esploader = await connectToDevice(cliArgs.port, cliArgs.baudRate);
+    esploader = await connectToDevice(cliArgs.port, cliArgs.baudRate);
 
     // Execute command
     switch (cliArgs.command) {
@@ -479,6 +481,15 @@ async function main() {
     await esploader.disconnect();
     process.exit(0);
   } catch (error: any) {
+    // Clean up device connection on failure
+    if (esploader) {
+      try {
+        await esploader.disconnect();
+      } catch (disconnectErr) {
+        // Ignore disconnect errors during error handling
+      }
+    }
+
     cliLogger.error(error.message);
     if (process.env.DEBUG) {
       console.error(error.stack);
