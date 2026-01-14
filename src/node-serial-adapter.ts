@@ -26,7 +26,7 @@ export interface NodeSerialPort {
     ringIndicator: boolean;
     dataSetReady: boolean;
   }>;
-  
+
   getInfo(): {
     usbVendorId?: number;
     usbProductId?: number;
@@ -204,7 +204,7 @@ export function createNodeSerialAdapter(
         });
       });
     },
-    
+
     getInfo() {
       // Node.js SerialPort doesn't provide USB vendor/product IDs directly
       // Return empty object to satisfy the interface
