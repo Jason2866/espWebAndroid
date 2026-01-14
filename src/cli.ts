@@ -2,9 +2,9 @@
 
 /**
  * ESP32Tool CLI - Command Line Interface for ESP device flashing
- * 
+ *
  * Provides esptool.py-like commands for flashing ESP devices via WebSerial/WebUSB
- * 
+ *
  * Usage:
  *   esp32tool flash-id
  *   esp32tool read-flash <offset> <size> <filename>
@@ -15,10 +15,10 @@
  *   esp32tool read-mac
  */
 
-import { ESPLoader } from './esp_loader';
-import { Logger } from './const';
-import { createNodeSerialAdapter, listPorts } from './node-serial-adapter';
-import * as fs from 'fs';
+import { ESPLoader } from "./esp_loader";
+import { Logger } from "./const";
+import { createNodeSerialAdapter, listPorts } from "./node-serial-adapter";
+import * as fs from "fs";
 
 // CLI Logger
 const cliLogger: Logger = {
@@ -41,14 +41,14 @@ interface CLIArgs {
 
 function parseArgs(): CLIArgs {
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     showHelp();
     process.exit(1);
   }
 
   const result: CLIArgs = {
-    command: '',
+    command: "",
     args: [],
     baudRate: 115200,
   };
@@ -56,12 +56,12 @@ function parseArgs(): CLIArgs {
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
-    
-    if (arg === '--port' || arg === '-p') {
+
+    if (arg === "--port" || arg === "-p") {
       result.port = args[++i];
-    } else if (arg === '--baud' || arg === '-b') {
+    } else if (arg === "--baud" || arg === "-b") {
       result.baudRate = parseInt(args[++i], 10);
-    } else if (arg === '--help' || arg === '-h') {
+    } else if (arg === "--help" || arg === "-h") {
       showHelp();
       process.exit(0);
     } else if (!result.command) {
@@ -117,36 +117,41 @@ For browser-based usage, use the web interface instead.
 }
 
 // Connect to ESP device
-async function connectToDevice(portPath?: string, baudRate: number = 115200): Promise<ESPLoader> {
+async function connectToDevice(
+  portPath?: string,
+  baudRate: number = 115200,
+): Promise<ESPLoader> {
   // List available ports if none specified
   if (!portPath) {
-    cliLogger.log('No port specified. Available ports:');
+    cliLogger.log("No port specified. Available ports:");
     const ports = await listPorts();
-    
+
     if (ports.length === 0) {
-      throw new Error('No serial ports found');
+      throw new Error("No serial ports found");
     }
-    
+
     ports.forEach((port, idx) => {
-      console.log(`  [${idx}] ${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ''}`);
+      console.log(
+        `  [${idx}] ${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ""}`,
+      );
     });
-    
-    throw new Error('Please specify a port with --port <path>');
+
+    throw new Error("Please specify a port with --port <path>");
   }
-  
+
   cliLogger.log(`Connecting to ${portPath} at ${baudRate} baud...`);
-  
+
   try {
     // Import serialport package dynamically
-    const { SerialPort } = await import('serialport');
-    
+    const { SerialPort } = await import("serialport");
+
     // Create Node.js SerialPort instance
     const nodePort = new SerialPort({
       path: portPath,
       baudRate: baudRate,
       autoOpen: false,
     });
-    
+
     // Open the port
     await new Promise<void>((resolve, reject) => {
       nodePort.open((err: Error | null | undefined) => {
@@ -154,23 +159,27 @@ async function connectToDevice(portPath?: string, baudRate: number = 115200): Pr
         else resolve();
       });
     });
-    
+
     // Create Web Serial API compatible adapter
     const webPort = createNodeSerialAdapter(nodePort, cliLogger);
-    
+
     // Create ESPLoader instance
     const esploader = new ESPLoader(webPort as any, cliLogger);
-    
+
     // Initialize connection
     await esploader.initialize();
-    
+
     cliLogger.log(`Connected to ${esploader.chipName || esploader.chipFamily}`);
-    
+
     return esploader;
-    
   } catch (err: any) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND' || err.code === 'MODULE_NOT_FOUND') {
-      throw new Error('serialport package not installed. Run: npm install serialport');
+    if (
+      err.code === "ERR_MODULE_NOT_FOUND" ||
+      err.code === "MODULE_NOT_FOUND"
+    ) {
+      throw new Error(
+        "serialport package not installed. Run: npm install serialport",
+      );
     }
     throw err;
   }
@@ -179,7 +188,7 @@ async function connectToDevice(portPath?: string, baudRate: number = 115200): Pr
 // Command implementations
 async function cmdChipId(esploader: ESPLoader) {
   cliLogger.log(`Chip Family: ${esploader.chipFamily}`);
-  cliLogger.log(`Chip Name: ${esploader.chipName || 'Unknown'}`);
+  cliLogger.log(`Chip Name: ${esploader.chipName || "Unknown"}`);
   if (esploader.chipRevision !== null) {
     cliLogger.log(`Chip Revision: ${esploader.chipRevision}`);
   }
@@ -192,7 +201,7 @@ async function cmdFlashId(esploader: ESPLoader) {
   // Detect flash size using the stub
   const stub = await esploader.runStub();
   await stub.detectFlashSize();
-  cliLogger.log(`Flash Size: ${stub.flashSize || 'Unknown'}`);
+  cliLogger.log(`Flash Size: ${stub.flashSize || "Unknown"}`);
 }
 
 async function cmdReadMac(esploader: ESPLoader) {
@@ -200,130 +209,157 @@ async function cmdReadMac(esploader: ESPLoader) {
   cliLogger.log(`MAC Address: ${mac}`);
 }
 
-async function cmdReadFlash(esploader: ESPLoader, offset: number, size: number, filename: string) {
-  cliLogger.log(`Reading ${size} bytes from offset 0x${offset.toString(16)}...`);
-  
+async function cmdReadFlash(
+  esploader: ESPLoader,
+  offset: number,
+  size: number,
+  filename: string,
+) {
+  cliLogger.log(
+    `Reading ${size} bytes from offset 0x${offset.toString(16)}...`,
+  );
+
   // Use stub for reading
   const stub = await esploader.runStub();
   const data = await stub.readFlash(offset, size);
-  
+
   fs.writeFileSync(filename, Buffer.from(data));
-  
+
   cliLogger.log(`Saved to ${filename}`);
 }
 
-async function cmdWriteFlash(esploader: ESPLoader, offset: number, filename: string) {
+async function cmdWriteFlash(
+  esploader: ESPLoader,
+  offset: number,
+  filename: string,
+) {
   if (!fs.existsSync(filename)) {
     throw new Error(`File not found: ${filename}`);
   }
-  
+
   const fileData = fs.readFileSync(filename);
   const size = fileData.byteLength;
-  
+
   cliLogger.log(`Writing ${size} bytes to offset 0x${offset.toString(16)}...`);
-  
+
   // Use stub for writing
   const stub = await esploader.runStub();
-  
+
   // Write flash using the stub's flash methods
   await stub.flashData(
     fileData.buffer as ArrayBuffer,
     (bytesWritten: number, totalBytes: number) => {
       const percent = Math.round((bytesWritten / totalBytes) * 100);
-      process.stdout.write(`\rProgress: ${percent}% (${bytesWritten}/${totalBytes} bytes)`);
+      process.stdout.write(
+        `\rProgress: ${percent}% (${bytesWritten}/${totalBytes} bytes)`,
+      );
     },
     offset,
   );
-  
-  console.log(''); // New line after progress
-  cliLogger.log('Write complete!');
+
+  console.log(""); // New line after progress
+  cliLogger.log("Write complete!");
 }
 
 async function cmdEraseFlash(esploader: ESPLoader) {
-  cliLogger.log('Erasing entire flash chip...');
-  
+  cliLogger.log("Erasing entire flash chip...");
+
   // Use stub for erasing
   const stub = await esploader.runStub();
-  
+
   // Erase flash
   await stub.eraseFlash();
-  
-  cliLogger.log('Erase complete!');
+
+  cliLogger.log("Erase complete!");
 }
 
-async function cmdEraseRegion(esploader: ESPLoader, offset: number, size: number) {
-  cliLogger.log(`Erasing region: offset=0x${offset.toString(16)}, size=0x${size.toString(16)}...`);
-  
+async function cmdEraseRegion(
+  esploader: ESPLoader,
+  offset: number,
+  size: number,
+) {
+  cliLogger.log(
+    `Erasing region: offset=0x${offset.toString(16)}, size=0x${size.toString(16)}...`,
+  );
+
   // Use stub for erasing
   const stub = await esploader.runStub();
-  
+
   // Erase region
   await stub.eraseRegion(offset, size);
-  
-  cliLogger.log('Erase complete!');
+
+  cliLogger.log("Erase complete!");
 }
 
-async function cmdVerifyFlash(esploader: ESPLoader, offset: number, filename: string) {
+async function cmdVerifyFlash(
+  esploader: ESPLoader,
+  offset: number,
+  filename: string,
+) {
   if (!fs.existsSync(filename)) {
     throw new Error(`File not found: ${filename}`);
   }
-  
+
   const fileData = fs.readFileSync(filename);
   const size = fileData.length;
-  
-  cliLogger.log(`Verifying ${size} bytes at offset 0x${offset.toString(16)}...`);
-  
+
+  cliLogger.log(
+    `Verifying ${size} bytes at offset 0x${offset.toString(16)}...`,
+  );
+
   // Use stub for reading
   const stub = await esploader.runStub();
   const flashData = await stub.readFlash(offset, size);
-  
+
   if (Buffer.compare(Buffer.from(flashData), fileData) === 0) {
-    cliLogger.log('Verification successful!');
+    cliLogger.log("Verification successful!");
   } else {
-    throw new Error('Verification failed! Flash contents do not match file.');
+    throw new Error("Verification failed! Flash contents do not match file.");
   }
 }
 
 // Main CLI entry point
 async function main() {
   const cliArgs = parseArgs();
-  
+
   try {
     // Special command: list-ports (doesn't need device connection)
-    if (cliArgs.command === 'list-ports') {
+    if (cliArgs.command === "list-ports") {
       const ports = await listPorts();
-      
+
       if (ports.length === 0) {
-        cliLogger.log('No serial ports found');
+        cliLogger.log("No serial ports found");
       } else {
-        cliLogger.log('Available serial ports:');
+        cliLogger.log("Available serial ports:");
         ports.forEach((port) => {
-          console.log(`  ${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ''}${port.serialNumber ? ` [${port.serialNumber}]` : ''}`);
+          console.log(
+            `  ${port.path}${port.manufacturer ? ` (${port.manufacturer})` : ""}${port.serialNumber ? ` [${port.serialNumber}]` : ""}`,
+          );
         });
       }
       process.exit(0);
     }
-    
+
     // Connect to device
     const esploader = await connectToDevice(cliArgs.port, cliArgs.baudRate);
-    
+
     // Execute command
     switch (cliArgs.command) {
-      case 'chip-id':
+      case "chip-id":
         await cmdChipId(esploader);
         break;
-        
-      case 'flash-id':
+
+      case "flash-id":
         await cmdFlashId(esploader);
         break;
-        
-      case 'read-mac':
+
+      case "read-mac":
         await cmdReadMac(esploader);
         break;
-        
-      case 'read-flash': {
+
+      case "read-flash": {
         if (cliArgs.args.length < 3) {
-          throw new Error('read-flash requires: <offset> <size> <filename>');
+          throw new Error("read-flash requires: <offset> <size> <filename>");
         }
         const offset = parseInt(cliArgs.args[0], 16);
         const size = parseInt(cliArgs.args[1], 16);
@@ -331,49 +367,48 @@ async function main() {
         await cmdReadFlash(esploader, offset, size, filename);
         break;
       }
-        
-      case 'write-flash': {
+
+      case "write-flash": {
         if (cliArgs.args.length < 2) {
-          throw new Error('write-flash requires: <offset> <filename>');
+          throw new Error("write-flash requires: <offset> <filename>");
         }
         const offset = parseInt(cliArgs.args[0], 16);
         const filename = cliArgs.args[1];
         await cmdWriteFlash(esploader, offset, filename);
         break;
       }
-        
-      case 'erase-flash':
+
+      case "erase-flash":
         await cmdEraseFlash(esploader);
         break;
-        
-      case 'erase-region': {
+
+      case "erase-region": {
         if (cliArgs.args.length < 2) {
-          throw new Error('erase-region requires: <offset> <size>');
+          throw new Error("erase-region requires: <offset> <size>");
         }
         const offset = parseInt(cliArgs.args[0], 16);
         const size = parseInt(cliArgs.args[1], 16);
         await cmdEraseRegion(esploader, offset, size);
         break;
       }
-        
-      case 'verify-flash': {
+
+      case "verify-flash": {
         if (cliArgs.args.length < 2) {
-          throw new Error('verify-flash requires: <offset> <filename>');
+          throw new Error("verify-flash requires: <offset> <filename>");
         }
         const offset = parseInt(cliArgs.args[0], 16);
         const filename = cliArgs.args[1];
         await cmdVerifyFlash(esploader, offset, filename);
         break;
       }
-        
+
       default:
         throw new Error(`Unknown command: ${cliArgs.command}`);
     }
-    
+
     // Disconnect
     await esploader.disconnect();
     process.exit(0);
-    
   } catch (error: any) {
     cliLogger.error(error.message);
     if (process.env.DEBUG) {

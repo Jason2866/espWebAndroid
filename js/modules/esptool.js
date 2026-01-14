@@ -5185,7 +5185,7 @@ class ESPLoader extends EventTarget {
             (mac0 >> 0) & 0xff,
         ];
         // Format as XX:XX:XX:XX:XX:XX
-        return macBytes.map(b => b.toString(16).padStart(2, '0')).join(':');
+        return macBytes.map((b) => b.toString(16).padStart(2, "0")).join(":");
     }
     /**
      * @name readLoop

@@ -12,10 +12,10 @@ Command-line interface for flashing ESP devices, providing esptool.py-like funct
 npm install
 ```
 
-### Build CLI
+### Build
 
 ```bash
-npm run build:cli
+npm run build
 ```
 
 ### Global Installation (Optional)

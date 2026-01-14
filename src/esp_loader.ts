@@ -620,7 +620,7 @@ export class ESPLoader extends EventTarget {
     // MAC address is stored in efuses, which we already read during initialization
     const mac0 = this._efuses[0];
     const mac1 = this._efuses[1];
-    
+
     // Extract MAC address bytes (6 bytes total)
     // MAC is stored in little-endian format across two 32-bit words
     const macBytes = [
@@ -631,9 +631,9 @@ export class ESPLoader extends EventTarget {
       (mac0 >> 8) & 0xff,
       (mac0 >> 0) & 0xff,
     ];
-    
+
     // Format as XX:XX:XX:XX:XX:XX
-    return macBytes.map(b => b.toString(16).padStart(2, '0')).join(':');
+    return macBytes.map((b) => b.toString(16).padStart(2, "0")).join(":");
   }
 
   /**
