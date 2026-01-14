@@ -18,7 +18,7 @@ Meet **ESP32Tool** – your all-in-one, next-gen solution for ESP device managem
 - Perfect for quick tasks and on-the-go management
 - **Try it now:** [jason2866.github.io/esp32tool](https://jason2866.github.io/esp32tool)
 
-### � Mobile App (Android PWA)
+### 📱 Mobile App (Android PWA)
 - **Install as native app** on Android devices
 - Works with USB OTG adapters via WebUSB
 - Full ESP management on your phone or tablet
@@ -62,7 +62,7 @@ ESP32Tool is designed first and foremost for the entire ESP32 family – deliver
 
 ---
 
-## �️ Desktop & CLI Installation
+## 📦 Desktop & CLI Installation
 
 ### Desktop App (GUI)
 
@@ -129,7 +129,8 @@ ESP32Tool works natively on Android devices with USB OTG support!
 
 Born from the minds of [Melissa LeBlanc-Williams](https://github.com/makermelissa), Adafruit, Nabu Casa and now supercharged by Jason2866, ESP32Tool has evolved into the most advanced, browser-based ESP management suite. With every update, the boundaries are pushed of what’s possible for your ESP devices.
 
-**Latest updates:** 
+**Latest updates:**
+
 December 2025 – Now with full LittleFS, SPIFFS, and FATFS support, plus file add/delete magic! Available as web app and desktop GUI.
 
 January 2026 – Added Android mobile devices support, standalone CLI.
