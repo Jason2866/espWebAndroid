@@ -3,6 +3,9 @@
   "version": "1.1.8",
   "description": "Flash & Read ESP devices using WebSerial",
   "main": "electron/main.js",
+  "bin": {
+    "esp32tool": "./dist/cli.js"
+  },
   "repository": {
     "type": "git",
     "url": "git://github.com/Jason2866/esp32tool.git"
@@ -17,7 +20,8 @@
   },
   "scripts": {
     "prebuild": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('js/modules',{recursive:true,force:true}); fs.mkdirSync('js/modules',{recursive:true});\"",
-    "build": "npm run prebuild && tsc && rollup -c && node -e \"const fs=require('fs'); fs.readdirSync('dist/web').filter(f=>f.endsWith('.js')).forEach(f=>fs.copyFileSync('dist/web/'+f,'js/modules/'+f)); fs.renameSync('js/modules/index.js','js/modules/esptool.js');\"",
+    "build": "npm run prebuild && tsc --skipLibCheck && rollup -c && node -e \"const fs=require('fs'); fs.readdirSync('dist/web').filter(f=>f.endsWith('.js')).forEach(f=>fs.copyFileSync('dist/web/'+f,'js/modules/'+f)); fs.renameSync('js/modules/index.js','js/modules/esptool.js');\"",
+    "build:cli": "tsc src/cli.ts --outDir dist --module commonjs --target es2020 --esModuleInterop --resolveJsonModule --skipLibCheck",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
@@ -31,6 +35,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.6",
+    "@types/serialport": "^8.0.5",
     "eslint": "^9.39.2",
     "@eslint/js": "^9.39.2",
     "electron": "^39.2.5",
@@ -53,6 +58,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.3",
     "rollup": "^4.53.5",
+    "serialport": "^12.0.0",
     "serve": "^14.2.4",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.52.0"

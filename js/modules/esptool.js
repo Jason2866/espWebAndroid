@@ -5168,6 +5168,26 @@ class ESPLoader extends EventTarget {
         };
     }
     /**
+     * Get MAC address from efuses
+     */
+    async getMacAddress() {
+        // MAC address is stored in efuses, which we already read during initialization
+        const mac0 = this._efuses[0];
+        const mac1 = this._efuses[1];
+        // Extract MAC address bytes (6 bytes total)
+        // MAC is stored in little-endian format across two 32-bit words
+        const macBytes = [
+            (mac1 >> 8) & 0xff,
+            (mac1 >> 0) & 0xff,
+            (mac0 >> 24) & 0xff,
+            (mac0 >> 16) & 0xff,
+            (mac0 >> 8) & 0xff,
+            (mac0 >> 0) & 0xff,
+        ];
+        // Format as XX:XX:XX:XX:XX:XX
+        return macBytes.map(b => b.toString(16).padStart(2, '0')).join(':');
+    }
+    /**
      * @name readLoop
      * Reads data from the input stream and places it in the inputBuffer
      */
@@ -7365,11 +7385,20 @@ class EspStubLoader extends ESPLoader {
         return [0, []];
     }
     /**
-     * @name getEraseSize
-     * depending on flash chip model the erase may take this long (maybe longer!)
+     * @name eraseFlash
+     * Erase entire flash chip
      */
     async eraseFlash() {
         await this.checkCommand(ESP_ERASE_FLASH, [], 0, CHIP_ERASE_TIMEOUT);
+    }
+    /**
+     * @name eraseRegion
+     * Erase a specific region of flash
+     */
+    async eraseRegion(offset, size) {
+        const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
+        const buffer = pack("<II", offset, size);
+        await this.checkCommand(ESP_ERASE_FLASH, buffer, 0, timeout);
     }
 }
 

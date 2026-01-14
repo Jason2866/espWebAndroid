@@ -1,0 +1,271 @@
+# ESP32Tool CLI
+
+Command-line interface for flashing ESP devices, providing esptool.py-like functionality using Node.js.
+
+## Installation
+
+### Prerequisites
+
+1. Node.js >= 22.12.0
+
+```bash
+npm install
+```
+
+### Build CLI
+
+```bash
+npm run build:cli
+```
+
+### Global Installation (Optional)
+
+```bash
+npm link
+```
+
+After linking, you can use `esp32tool` command globally.
+
+### Implemented Commands
+
+- `list-ports` - List available serial ports
+- `chip-id` - Read chip information (family, name, revision, variant)
+- `flash-id` - Read flash size
+- `read-mac` - Read MAC address from efuses
+- `read-flash` - Read flash memory to file
+- `write-flash` - Write file to flash memory
+- `erase-flash` - Erase entire flash chip
+- `erase-region` - Erase a specific region of flash
+- `verify-flash` - Verify flash contents against file
+
+### Implementation Details
+
+The CLI uses the same core ESP loader implementation as the web interface, ensuring consistent behavior across platforms. Key features:
+
+- **MAC Address**: Read directly from efuses (already loaded during chip initialization)
+- **Flash Operations**: Use the stub loader for optimal performance
+- **Write Flash**: Supports progress reporting during write operations
+- **Erase Operations**: Both full chip erase and region-specific erase supported
+- **Error Handling**: Comprehensive error messages and retry logic
+
+## Usage
+
+### Basic Syntax
+
+```bash
+esp32tool [options] <command> [args...]
+```
+
+### Options
+
+- `--port, -p <port>` - Serial port path (e.g., `/dev/ttyUSB0`, `COM3`)
+- `--baud, -b <rate>` - Baud rate (default: 115200)
+- `--help, -h` - Show help message
+
+### Commands
+
+#### List Available Ports
+
+```bash
+esp32tool list-ports
+```
+
+Lists all available serial ports on your system.
+
+#### Read Chip Information
+
+```bash
+esp32tool --port /dev/ttyUSB0 chip-id
+```
+
+Displays chip family, name, and revision.
+
+#### Read Flash ID
+
+```bash
+esp32tool --port /dev/ttyUSB0 flash-id
+```
+
+Reads SPI flash manufacturer and device ID, and detects flash size.
+
+#### Read MAC Address
+
+```bash
+esp32tool --port /dev/ttyUSB0 read-mac
+```
+
+Reads the device's MAC address.
+
+#### Read Flash Memory
+
+```bash
+esp32tool --port /dev/ttyUSB0 read-flash 0x0 0x400000 flash_dump.bin
+```
+
+Reads flash memory from specified offset and size, saves to file.
+
+- `offset` - Start address in hex (e.g., `0x0`)
+- `size` - Number of bytes to read in hex (e.g., `0x400000` = 4MB)
+- `filename` - Output file path
+
+#### Write Flash Memory
+
+```bash
+esp32tool --port /dev/ttyUSB0 write-flash 0x1000 bootloader.bin
+```
+
+Writes a binary file to flash at specified offset.
+
+- `offset` - Start address in hex (e.g., `0x1000`)
+- `filename` - Input file path
+
+#### Erase Entire Flash
+
+```bash
+esp32tool --port /dev/ttyUSB0 erase-flash
+```
+
+Erases the entire flash chip. **Warning: This will erase all data!**
+
+#### Erase Flash Region
+
+```bash
+esp32tool --port /dev/ttyUSB0 erase-region 0x9000 0x6000
+```
+
+Erases a specific region of flash.
+
+- `offset` - Start address in hex
+- `size` - Number of bytes to erase in hex
+
+#### Verify Flash Contents
+
+```bash
+esp32tool --port /dev/ttyUSB0 verify-flash 0x1000 bootloader.bin
+```
+
+Verifies that flash contents match a file.
+
+- `offset` - Start address in hex
+- `filename` - File to compare against
+
+## Examples
+
+### Complete Flash Workflow
+
+```bash
+# 1. List available ports
+esp32tool list-ports
+
+# 2. Check chip info
+esp32tool --port /dev/ttyUSB0 chip-id
+
+# 3. Backup current flash
+esp32tool --port /dev/ttyUSB0 read-flash 0x0 0x400000 backup.bin
+
+# 4. Erase flash
+esp32tool --port /dev/ttyUSB0 erase-flash
+
+# 5. Write new firmware
+esp32tool --port /dev/ttyUSB0 write-flash 0x0 bootloader.bin
+esp32tool --port /dev/ttyUSB0 write-flash 0x8000 partitions.bin
+esp32tool --port /dev/ttyUSB0 write-flash 0x10000 firmware.bin
+
+# 6. Verify
+esp32tool --port /dev/ttyUSB0 verify-flash 0x10000 firmware.bin
+```
+
+### High-Speed Flashing
+
+```bash
+esp32tool --port /dev/ttyUSB0 --baud 921600 write-flash 0x10000 firmware.bin
+```
+
+### Debug Mode
+
+```bash
+DEBUG=1 esp32tool --port /dev/ttyUSB0 chip-id
+```
+
+## Platform-Specific Notes
+
+### Linux
+
+- Ports are typically `/dev/ttyUSB0`, `/dev/ttyACM0`, etc.
+- You may need to add your user to the `dialout` group:
+  ```bash
+  sudo usermod -a -G dialout $USER
+  ```
+- Log out and back in for changes to take effect
+
+### macOS
+
+- Ports are typically `/dev/cu.usbserial-*` or `/dev/cu.SLAB_USBtoUART`
+- No special permissions needed
+
+### Windows
+
+- Ports are `COM1`, `COM3`, etc.
+- Check Device Manager to find the correct port
+- May need to install CH340/CP2102 drivers
+
+## Comparison with esptool.py
+
+This CLI provides similar functionality to esptool.py but runs in Node.js:
+
+| esptool.py | esp32tool CLI |
+|------------|---------------|
+| `esptool.py chip-id` | `esp32tool chip-id` |
+| `esptool.py flash-id` | `esp32tool flash-id` |
+| `esptool.py read-mac` | `esp32tool read-mac` |
+| `esptool.py read-flash` | `esp32tool read-flash` |
+| `esptool.py write-flash` | `esp32tool write-flash` |
+| `esptool.py erase-flash` | `esp32tool erase-flash` |
+| `esptool.py erase-region` | `esp32tool erase-region` |
+
+## Troubleshooting
+
+### "No serial ports found"
+
+- Check that your ESP device is connected
+- Check USB cable (some cables are power-only)
+- Install appropriate USB-to-Serial drivers (CH340, CP2102, etc.)
+
+### "Permission denied" (Linux)
+
+```bash
+sudo usermod -a -G dialout $USER
+# Log out and back in
+```
+
+### Connection Timeout
+
+- Try holding the BOOT button while connecting
+- Try a lower baud rate: `--baud 115200`
+- Check that no other program is using the port
+
+## Development
+
+### Project Structure
+
+```
+src/
+├── cli.ts                  # CLI entry point
+├── node-serial-adapter.ts  # SerialPort adapter for Node.js
+├── esp_loader.ts           # Core ESP loader (shared with web)
+└── ...
+```
+
+### Building
+
+```bash
+npm run build:cli
+```
+
+### Testing
+
+```bash
+# Test CLI locally
+node dist/cli.js list-ports
+node dist/cli.js --port /dev/ttyUSB0 chip-id
+```
