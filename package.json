@@ -22,6 +22,7 @@
   "scripts": {
     "prebuild": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('js/modules',{recursive:true,force:true}); fs.mkdirSync('js/modules',{recursive:true});\"",
     "build": "npm run prebuild && tsc --skipLibCheck && rollup -c && node -e \"const fs=require('fs'); fs.readdirSync('dist/web').filter(f=>f.endsWith('.js')).forEach(f=>fs.copyFileSync('dist/web/'+f,'js/modules/'+f)); fs.renameSync('js/modules/index.js','js/modules/esptool.js');\" && node fix-cli-imports.cjs",
+    "build:binary": "node build-single-binary.cjs",
     "format": "npm exec -- prettier --write src",
     "develop": "script/develop",
     "lint": "eslint src/",
@@ -51,6 +52,7 @@
     "@types/pako": "^2.0.4",
     "@types/serialport": "^8.0.5",
     "@types/w3c-web-serial": "^1.0.7",
+    "archiver": "^7.0.1",
     "electron": "^39.2.5",
     "electron-squirrel-startup": "^1.0.1",
     "eslint": "^9.39.2",

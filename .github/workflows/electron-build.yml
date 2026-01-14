@@ -58,21 +58,26 @@ jobs:
       - name: Build TypeScript and Rollup
         run: npm run prepublishOnly
 
+      - name: Build CLI binaries
+        run: npm run build:binary
+
       - name: Build Electron app
         run: npm run make -- --arch=${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # macOS: Upload only DMG
-      - name: Upload macOS DMG
+      # macOS: Upload DMG and CLI binary
+      - name: Upload macOS artifacts
         if: matrix.platform == 'darwin'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
-          path: out/make/*.dmg
+          path: |
+            out/make/*.dmg
+            binaries/esp32tool-macos*
           retention-days: 5
 
-      # Windows: Upload Squirrel installer and ZIP
+      # Windows: Upload Squirrel installer, ZIP, and CLI binary
       - name: Upload Windows artifacts
         if: matrix.platform == 'win32'
         uses: actions/upload-artifact@v6
@@ -81,9 +86,10 @@ jobs:
           path: |
             out/make/squirrel.windows/**/*.exe
             out/make/zip/**/*.zip
+            binaries/esp32tool-win-x64.zip
           retention-days: 5
 
-      # Linux: Upload DEB and RPM
+      # Linux: Upload DEB, RPM, and CLI binary
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v6
@@ -93,6 +99,7 @@ jobs:
             out/make/deb/**/*.deb
             out/make/rpm/**/*.rpm
             out/make/zip/**/*.zip
+            binaries/esp32tool-linux-x64*
           retention-days: 5
 
   release:
@@ -122,6 +129,8 @@ jobs:
             
             ### Downloads
             
+            #### Electron GUI Apps
+            
             | Platform | Architecture | File |
             |----------|--------------|------|
             | macOS | Apple Silicon | `*.arm64.dmg` |
@@ -129,7 +138,19 @@ jobs:
             | Windows | x64 | `*.exe` / `*.zip` |
             | Linux | x64 | `*.deb` / `*.rpm` / `*.zip` |
             
+            #### CLI Tools (Command Line)
+            
+            **⚠️ Requires Node.js 18 or higher to be installed on your system**
+            
+            | Platform | File | 
+            |----------|------|
+            | macOS | `esp32tool-macos` |
+            | Linux | `esp32tool-linux-x64` |
+            | Windows | `esp32tool-win-x64.zip` |
+            
             ### Installation
+            
+            #### GUI Apps
             
             **macOS Apple Silicon:** Download with `curl -L -O "https://github.com/Jason2866/esp32tool/releases/download/${{ github.ref_name }}/ESP32Tool-${{ steps.version.outputs.VERSION }}-arm64.dmg"` to avoid Gatekeeper flags the package. Open the DMG and drag the app to Applications.
             
@@ -138,6 +159,27 @@ jobs:
             **Windows:** Run the `.exe` installer or extract the `.zip` archive.
             
             **Linux:** Install via `sudo dpkg -i *.deb` or `sudo rpm -i *.rpm`, or extract the `.zip` archive.
+            
+            #### CLI Tools
+            
+            **Prerequisites:** Node.js 18 or higher must be installed. Download from [nodejs.org](https://nodejs.org/)
+            
+            **macOS/Linux:**
+            ```bash
+            # Download and make executable
+            chmod +x esp32tool-macos  # or esp32tool-linux-x64
+            
+            # Run commands
+            ./esp32tool-macos list-ports
+            ./esp32tool-macos --port /dev/ttyUSB0 chip-id
+            ```
+            
+            **Windows:**
+            ```cmd
+            # Extract zip and run
+            esp32tool.bat list-ports
+            esp32tool.bat --port COM3 chip-id
+            ```
           draft: false
           prerelease: false
           files: |
@@ -146,5 +188,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/*.zip
+            artifacts/**/esp32tool-macos*
+            artifacts/**/esp32tool-linux-x64*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

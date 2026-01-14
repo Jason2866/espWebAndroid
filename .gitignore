@@ -7,3 +7,5 @@ out
 # CLI build artifacts
 esp32tool@*
 node
+binaries
+.bundle-temp
