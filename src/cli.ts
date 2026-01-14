@@ -423,12 +423,12 @@ async function main() {
 
 // Run CLI - only execute when this file is run directly (not when imported)
 // Check if we're being run directly by Node.js (not imported by Electron)
-const isDirectRun = process.argv[1] && (
-  process.argv[1].endsWith('/cli.js') || 
-  process.argv[1].endsWith('\\cli.js') ||
-  process.argv[1].endsWith('/cli-fixed.js') ||
-  process.argv[1].endsWith('\\cli-fixed.js')
-);
+const isDirectRun =
+  process.argv[1] &&
+  (process.argv[1].endsWith("/cli.js") ||
+    process.argv[1].endsWith("\\cli.js") ||
+    process.argv[1].endsWith("/cli-fixed.js") ||
+    process.argv[1].endsWith("\\cli-fixed.js"));
 
 if (isDirectRun) {
   main();
