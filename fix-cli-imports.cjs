@@ -65,6 +65,20 @@ function fixImportsInFile(filePath) {
     }
   );
   
+  // Also handle JSON imports without .default that were already processed
+  // Pattern: stubcode = await import("./esp32c3.json", { with: { type: "json" } });
+  // This catches cases where the import is already formatted but missing .default
+  content = content.replace(
+    /(\w+)\s*=\s*await\s+import\(([^)]+\.json[^)]*)\);/g,
+    function(match, varName, importPath) {
+      // Skip if already has .default
+      if (match.includes('.default')) {
+        return match;
+      }
+      return `${varName} = (await import(${importPath})).default;`;
+    }
+  );
+  
   // Also fix dynamic imports for .js files
   content = content.replace(/import\("\.\/([^"]+)"\)/g, function(match, moduleName) {
     if (moduleName.endsWith('.js')) {
