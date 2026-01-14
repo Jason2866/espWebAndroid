@@ -466,7 +466,9 @@ const isDirectRun =
   (process.argv[1].endsWith("/cli.js") ||
     process.argv[1].endsWith("\\cli.js") ||
     process.argv[1].endsWith("/cli-fixed.js") ||
-    process.argv[1].endsWith("\\cli-fixed.js"));
+    process.argv[1].endsWith("\\cli-fixed.js") ||
+    process.argv[1].endsWith("/esp32tool") ||
+    process.argv[1].endsWith("\\esp32tool"));
 
 if (isDirectRun) {
   main();
