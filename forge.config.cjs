@@ -31,7 +31,6 @@ module.exports = {
       /^\/script/,
       /^\/\.github/,
       /^\/tools/,
-      /^\/node_modules\/(?!electron)/,
       /\.git/,
       /\.eslint/,
       /\.prettier/,
