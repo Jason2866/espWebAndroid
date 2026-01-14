@@ -5,6 +5,5 @@ dist
 out
 
 # CLI build artifacts
-fix-cli-imports.cjs
 esp32tool@*
 node
