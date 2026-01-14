@@ -203,7 +203,7 @@ async function cmdChipId(esploader: ESPLoader) {
 async function cmdFlashId(esploader: ESPLoader) {
   // Detect flash size using the stub
   const stub = await esploader.runStub();
-  await stub.detectFlashSize();
+  // detectFlashSize() is already called by runStub()
   cliLogger.log(`Flash Size: ${stub.flashSize || "Unknown"}`);
 }
 
