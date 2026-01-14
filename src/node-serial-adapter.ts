@@ -206,14 +206,17 @@ export function createNodeSerialAdapter(
  */
 export async function listPorts(): Promise<Array<{ path: string; manufacturer?: string; serialNumber?: string }>> {
   try {
-    const { SerialPort } = require('serialport');
+    const { SerialPort } = await import('serialport');
     const ports = await SerialPort.list();
     return ports.map((port: any) => ({
       path: port.path,
       manufacturer: port.manufacturer,
       serialNumber: port.serialNumber,
     }));
-  } catch (err) {
-    throw new Error('serialport package not installed. Run: npm install serialport');
+  } catch (err: any) {
+    if (err.code === 'ERR_MODULE_NOT_FOUND' || err.code === 'MODULE_NOT_FOUND') {
+      throw new Error('serialport package not installed. Run: npm install serialport');
+    }
+    throw err;
   }
 }

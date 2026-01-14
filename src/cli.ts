@@ -137,8 +137,8 @@ async function connectToDevice(portPath?: string, baudRate: number = 115200): Pr
   cliLogger.log(`Connecting to ${portPath} at ${baudRate} baud...`);
   
   try {
-    // Require serialport package
-    const { SerialPort } = require('serialport');
+    // Import serialport package dynamically
+    const { SerialPort } = await import('serialport');
     
     // Create Node.js SerialPort instance
     const nodePort = new SerialPort({
@@ -169,7 +169,7 @@ async function connectToDevice(portPath?: string, baudRate: number = 115200): Pr
     return esploader;
     
   } catch (err: any) {
-    if (err.code === 'MODULE_NOT_FOUND') {
+    if (err.code === 'ERR_MODULE_NOT_FOUND' || err.code === 'MODULE_NOT_FOUND') {
       throw new Error('serialport package not installed. Run: npm install serialport');
     }
     throw err;
@@ -383,9 +383,7 @@ async function main() {
   }
 }
 
-// Run CLI if executed directly
-if (require.main === module) {
-  main();
-}
+// Run CLI - always execute when this file is run directly
+main();
 
 export { main as runCLI };
