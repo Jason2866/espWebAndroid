@@ -60,6 +60,8 @@ esp32tool [options] <command> [args...]
 
 - `--port, -p <port>` - Serial port path (e.g., `/dev/ttyUSB0`, `COM3`)
 - `--baud, -b <rate>` - Baud rate (default: 115200)
+  - For faster operations, use higher rates: 460800, 921600, or 2000000
+  - The stub loader will use this rate for all operations
 - `--help, -h` - Show help message
 
 ### Commands
@@ -177,9 +179,27 @@ esp32tool --port /dev/ttyUSB0 verify-flash 0x10000 firmware.bin
 
 ### High-Speed Flashing
 
+For faster read/write operations, use a higher baud rate:
+
 ```bash
-esp32tool --port /dev/ttyUSB0 --baud 921600 write-flash 0x10000 firmware.bin
+# Fast read (921600 baud)
+esp32tool --port /dev/ttyUSB0 --baud 921600 read-flash 0x0 0x400000 backup.bin
+
+# Very fast write (2Mbps) - if your USB-Serial adapter supports it
+esp32tool --port /dev/ttyUSB0 --baud 2000000 write-flash 0x10000 firmware.bin
+
+# Standard speed (115200 baud) - most compatible
+esp32tool --port /dev/ttyUSB0 write-flash 0x10000 firmware.bin
 ```
+
+**Supported Baud Rates:**
+- 115200 (default, most compatible)
+- 230400
+- 460800
+- 921600 (recommended for most USB-Serial adapters)
+- 2000000 (2Mbps, for high-speed adapters like CP2102N, CH343)
+
+**Note:** Higher baud rates require a good quality USB cable and compatible USB-Serial adapter.
 
 ### Debug Mode
 
