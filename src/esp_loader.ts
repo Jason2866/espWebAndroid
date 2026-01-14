@@ -3308,7 +3308,7 @@ class EspStubLoader extends ESPLoader {
     if (size < 0) {
       throw new Error(`Invalid size: ${size} (must be non-negative)`);
     }
-    
+
     // No-op for zero size
     if (size === 0) {
       this.logger.log("eraseRegion: size is 0, skipping erase");
@@ -3330,14 +3330,10 @@ class EspStubLoader extends ESPLoader {
     // Check for reasonable bounds (prevent wrapping in pack)
     const maxValue = 0xffffffff; // 32-bit unsigned max
     if (offset > maxValue) {
-      throw new Error(
-        `Offset ${offset} exceeds maximum value ${maxValue}`,
-      );
+      throw new Error(`Offset ${offset} exceeds maximum value ${maxValue}`);
     }
     if (size > maxValue) {
-      throw new Error(
-        `Size ${size} exceeds maximum value ${maxValue}`,
-      );
+      throw new Error(`Size ${size} exceeds maximum value ${maxValue}`);
     }
 
     const timeout = timeoutPerMb(ERASE_REGION_TIMEOUT_PER_MB, size);
